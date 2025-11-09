@@ -450,10 +450,51 @@ class LinkedInJobScraper {
         return;
       }
 
-      await this.delay(5000);
+      // Wait for search results to load
+      console.log("⏳ Waiting for search results to load...");
+      await this.delay(8000);
+
+      // Check if page loaded correctly
+      const currentUrl = page.url();
+      console.log(`📍 Current URL: ${currentUrl}`);
+      
+      if (!currentUrl.includes("/jobs/search")) {
+        console.log("⚠️  Warning: Not on jobs search page");
+      }
 
       // Apply filters
       await this.applyFilters(page);
+
+      // Additional wait after filters
+      await this.delay(5000);
+
+      // Check for "no results" or blocking messages
+      const pageStatus = await page.evaluate(() => {
+        const bodyText = document.body.textContent.toLowerCase();
+        return {
+          hasNoResults: bodyText.includes("no jobs found") || 
+                       bodyText.includes("we couldn't find") ||
+                       bodyText.includes("no matching jobs"),
+          hasBlocked: bodyText.includes("blocked") || 
+                     bodyText.includes("suspicious activity") ||
+                     bodyText.includes("verify"),
+          hasRateLimit: bodyText.includes("too many requests") ||
+                       bodyText.includes("rate limit"),
+          pageText: document.body.textContent.substring(0, 500),
+        };
+      });
+
+      if (pageStatus.hasNoResults) {
+        console.log("⚠️  No jobs found for this location/query");
+        console.log("📄 Page text snippet:", pageStatus.pageText);
+        return;
+      }
+
+      if (pageStatus.hasBlocked || pageStatus.hasRateLimit) {
+        console.log("⚠️  LinkedIn may have blocked or rate-limited the request");
+        console.log("📄 Page text snippet:", pageStatus.pageText);
+        return;
+      }
 
       // Get job list and scrape each job
       let scrapedCount = 0;
@@ -471,6 +512,34 @@ class LinkedInJobScraper {
         // Get all job cards on current page
         const jobCards = await this.getJobCardsList(page);
         console.log(`📋 Found ${jobCards.length} job cards on page`);
+        
+        // If no cards found on first attempt, wait longer and try again
+        if (jobCards.length === 0 && scrollAttempts === 1) {
+          console.log("⚠️  No job cards found on first attempt. Waiting longer...");
+          await this.delay(10000);
+          
+          // Try scrolling to trigger lazy loading
+          await page.evaluate(() => {
+            window.scrollTo(0, document.body.scrollHeight / 2);
+          });
+          await this.delay(5000);
+          
+          // Try getting cards again
+          const jobCardsRetry = await this.getJobCardsList(page);
+          console.log(`📋 Found ${jobCardsRetry.length} job cards after retry`);
+          
+          if (jobCardsRetry.length === 0) {
+            console.log("❌ Still no job cards found. The page might not have loaded correctly.");
+            // Take a screenshot for debugging (if possible)
+            try {
+              await page.screenshot({ path: `debug-${location}-${Date.now()}.png`, fullPage: true });
+              console.log("📸 Screenshot saved for debugging");
+            } catch (e) {
+              console.log("⚠️  Could not save screenshot");
+            }
+            break;
+          }
+        }
 
         // Scrape each job card
         for (
@@ -786,8 +855,90 @@ class LinkedInJobScraper {
 
       await this.delay(3000);
       console.log("✅ All filters applied");
+      
+      // Wait for job results to load after applying filters
+      console.log("⏳ Waiting for job results to load...");
+      await this.waitForJobResults(page);
+      
     } catch (error) {
       console.error("Error applying filters:", error.message);
+    }
+  }
+
+  /**
+   * Wait for job results to appear on the page
+   */
+  async waitForJobResults(page) {
+    try {
+      // Wait for job list container to appear
+      const jobListSelectors = [
+        ".jobs-search-results-list",
+        ".scaffold-layout__list-container",
+        ".jobs-search-results",
+        "[data-job-id]",
+        ".job-card-container",
+        ".jobs-search-results__list-item",
+      ];
+
+      let jobListFound = false;
+      for (const selector of jobListSelectors) {
+        try {
+          await page.waitForSelector(selector, { timeout: 10000 });
+          console.log(`✅ Found job list container: ${selector}`);
+          jobListFound = true;
+          break;
+        } catch (e) {
+          continue;
+        }
+      }
+
+      if (!jobListFound) {
+        console.log("⚠️  Job list container not found with standard selectors");
+      }
+
+      // Wait for network to be idle (jobs loading)
+      try {
+        await page.waitForLoadState?.("networkidle", { timeout: 15000 }).catch(() => {});
+      } catch (e) {
+        // waitForLoadState might not be available in all puppeteer versions
+      }
+
+      // Additional wait for dynamic content
+      await this.delay(5000);
+
+      // Scroll to trigger lazy loading
+      await page.evaluate(() => {
+        window.scrollTo(0, 500);
+      });
+      await this.delay(2000);
+
+      // Scroll back to top
+      await page.evaluate(() => {
+        window.scrollTo(0, 0);
+      });
+      await this.delay(2000);
+
+      // Debug: Check what's actually on the page
+      const pageInfo = await page.evaluate(() => {
+        const jobCards = document.querySelectorAll(
+          ".jobs-search-results__list-item, .job-card-container, .scaffold-layout__list-item, [data-job-id], li[data-occludable-job-id], .job-card-list__entity-lockup"
+        );
+        const jobList = document.querySelector(
+          ".jobs-search-results-list, .scaffold-layout__list-container, .jobs-search-results, ul.scaffold-layout__list"
+        );
+        return {
+          jobCardsCount: jobCards.length,
+          jobListExists: jobList !== null,
+          url: window.location.href,
+          title: document.title,
+          hasResults: document.body.textContent.includes("results") || document.body.textContent.includes("jobs"),
+        };
+      });
+
+      console.log("📊 Page debug info:", JSON.stringify(pageInfo, null, 2));
+
+    } catch (error) {
+      console.error("Error waiting for job results:", error.message);
     }
   }
 
@@ -795,11 +946,62 @@ class LinkedInJobScraper {
    * Get list of job cards
    */
   async getJobCardsList(page) {
+    // First, try to wait for at least one job card to appear
+    const jobCardSelectors = [
+      ".jobs-search-results__list-item",
+      ".job-card-container",
+      ".scaffold-layout__list-item",
+      "[data-job-id]",
+      "li[data-occludable-job-id]",
+      ".job-card-list__entity-lockup",
+      "ul.scaffold-layout__list > li",
+      ".jobs-search-results__list-item--active",
+    ];
+
+    let cardsFound = false;
+    for (const selector of jobCardSelectors) {
+      try {
+        await page.waitForSelector(selector, { timeout: 5000 });
+        cardsFound = true;
+        break;
+      } catch (e) {
+        continue;
+      }
+    }
+
+    // Get all job cards with multiple selector strategies
     return await page.evaluate(() => {
-      const cards = document.querySelectorAll(
-        ".jobs-search-results__list-item, .job-card-container, .scaffold-layout__list-item, [data-job-id]"
-      );
-      return Array.from(cards).map((card, index) => index);
+      // Try multiple selectors
+      const selectors = [
+        ".jobs-search-results__list-item",
+        ".job-card-container",
+        ".scaffold-layout__list-item",
+        "[data-job-id]",
+        "li[data-occludable-job-id]",
+        ".job-card-list__entity-lockup",
+        "ul.scaffold-layout__list > li",
+      ];
+
+      let cards = [];
+      for (const selector of selectors) {
+        const elements = document.querySelectorAll(selector);
+        if (elements.length > 0) {
+          cards = Array.from(elements);
+          break;
+        }
+      }
+
+      // If still no cards, try finding any list items in job results area
+      if (cards.length === 0) {
+        const jobResultsArea = document.querySelector(
+          ".jobs-search-results, .scaffold-layout__list-container, .jobs-search-results-list"
+        );
+        if (jobResultsArea) {
+          cards = Array.from(jobResultsArea.querySelectorAll("li, [role='listitem']"));
+        }
+      }
+
+      return cards.map((card, index) => index);
     });
   }
 
