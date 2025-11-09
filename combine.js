@@ -1231,31 +1231,100 @@ class LinkedInEmailScraper {
 
       if (!credentials.email || !credentials.password) {
         console.log("⚠️  No LinkedIn credentials provided");
-        console.log(
-          "💡 Set LINKEDIN_EMAIL and LINKEDIN_PASSWORD environment variables"
-        );
         return false;
       }
 
       console.log("🌐 Navigating to LinkedIn login page...");
 
+      // IMPROVEMENT 1: Add cookies before navigation (if available)
+      if (process.env.LINKEDIN_COOKIES) {
+        try {
+          const cookies = JSON.parse(process.env.LINKEDIN_COOKIES);
+          await page.setCookie(...cookies);
+          console.log("✅ Pre-existing cookies loaded");
+
+          // Try to navigate directly to feed
+          await page.goto(`${this.baseURL}/feed`, {
+            waitUntil: "domcontentloaded",
+            timeout: 30000,
+          });
+
+          await this.delay(3000);
+
+          // Check if already logged in
+          const isLoggedIn = await page.evaluate(() => {
+            return (
+              document.querySelector(".global-nav, .feed-identity-module") !==
+              null
+            );
+          });
+
+          if (isLoggedIn) {
+            console.log("✅ Already logged in via cookies");
+            return true;
+          }
+        } catch (e) {
+          console.log("⚠️  Cookie login failed, trying regular login");
+        }
+      }
+
+      // IMPROVEMENT 2: Enhanced stealth for login page
+      await page.evaluateOnNewDocument(() => {
+        // Override navigator properties
+        Object.defineProperty(navigator, "webdriver", { get: () => undefined });
+        Object.defineProperty(navigator, "plugins", {
+          get: () => [1, 2, 3, 4, 5],
+        });
+        Object.defineProperty(navigator, "languages", {
+          get: () => ["en-US", "en"],
+        });
+        Object.defineProperty(navigator, "platform", { get: () => "Win32" });
+        Object.defineProperty(navigator, "hardwareConcurrency", {
+          get: () => 8,
+        });
+        Object.defineProperty(navigator, "deviceMemory", { get: () => 8 });
+
+        // Mock chrome object
+        window.chrome = { runtime: {} };
+
+        // Override permissions
+        const originalQuery = window.navigator.permissions.query;
+        window.navigator.permissions.query = (parameters) =>
+          parameters.name === "notifications"
+            ? Promise.resolve({ state: Notification.permission })
+            : originalQuery(parameters);
+      });
+
       await page.goto(`${this.baseURL}/login`, {
-        waitUntil: "domcontentloaded",
+        waitUntil: "networkidle2", // Changed from domcontentloaded
         timeout: 30000,
       });
 
       await this.delay(3000);
 
-      // Wait for login form with more flexible approach
+      // IMPROVEMENT 3: Better form detection
       try {
         await page.waitForFunction(
-          () =>
-            document.querySelector("#username") ||
-            document.querySelector('[name="session_key"]'),
-          { timeout: 10000 }
+          () => {
+            const usernameField =
+              document.querySelector("#username") ||
+              document.querySelector('[name="session_key"]');
+            const passwordField =
+              document.querySelector("#password") ||
+              document.querySelector('[name="session_password"]');
+            return usernameField && passwordField;
+          },
+          { timeout: 15000 }
         );
       } catch (e) {
-        console.log("⚠️  Login form not found, continuing without login");
+        console.log("⚠️  Login form not found");
+
+        // IMPROVEMENT 4: Take screenshot for debugging (only in dev)
+        if (!this.isProduction) {
+          await page.screenshot({ path: "login-error.png" });
+          console.log("📸 Screenshot saved: login-error.png");
+        }
+
         return false;
       }
 
@@ -1268,34 +1337,66 @@ class LinkedInEmailScraper {
       if (usernameField && passwordField) {
         console.log("📝 Filling login form...");
 
-        await usernameField.type(credentials.email, { delay: 100 });
-        await this.delay(500);
-        await passwordField.type(credentials.password, { delay: 100 });
-        await this.delay(500);
+        // IMPROVEMENT 5: Human-like typing with random delays
+        await this.humanLikeType(usernameField, credentials.email);
+        await this.delay(500 + Math.random() * 500);
+
+        await this.humanLikeType(passwordField, credentials.password);
+        await this.delay(500 + Math.random() * 500);
+
+        // IMPROVEMENT 6: Check for CAPTCHA before submitting
+        const hasCaptcha = await page.evaluate(() => {
+          return (
+            document.querySelector('[data-test-id="recaptcha-iframe"]') !==
+              null ||
+            document.querySelector(".g-recaptcha") !== null ||
+            document.querySelector('[id*="captcha"]') !== null
+          );
+        });
+
+        if (hasCaptcha) {
+          console.log(
+            "⚠️  CAPTCHA detected - cannot proceed with automated login"
+          );
+          return false;
+        }
 
         const submitButton = await page.$("button[type='submit']");
         if (submitButton) {
           console.log("🔘 Clicking submit button...");
-          await submitButton.click();
 
-          // Wait for navigation with more flexible approach
-          await this.delay(8000);
+          // IMPROVEMENT 7: Wait for navigation promise
+          await Promise.all([
+            page
+              .waitForNavigation({
+                waitUntil: "networkidle2",
+                timeout: 30000,
+              })
+              .catch(() => console.log("Navigation timeout - continuing...")),
+            submitButton.click(),
+          ]);
 
-          // Check if login was successful
-          const isLoggedIn = await page.evaluate(() => {
-            return (
-              document.querySelector(".global-nav, .feed-identity-module") !==
-              null
-            );
-          });
+          await this.delay(5000);
 
-          if (isLoggedIn) {
+          // IMPROVEMENT 8: Enhanced login verification
+          const loginStatus = await this.verifyLoginStatus(page);
+
+          if (loginStatus.success) {
             console.log("✅ Successfully logged into LinkedIn");
-            await this.delay(3000);
+
+            // IMPROVEMENT 9: Save cookies for future use
+            if (!this.isProduction) {
+              const cookies = await page.cookies();
+              console.log("💾 Cookies saved for future use");
+              console.log(
+                "Set LINKEDIN_COOKIES env var to:",
+                JSON.stringify(cookies)
+              );
+            }
+
             return true;
           } else {
-            console.log("⚠️  Login may have failed or requires verification");
-            // Continue without login
+            console.log(`⚠️  Login verification failed: ${loginStatus.reason}`);
             return false;
           }
         }
@@ -1304,9 +1405,98 @@ class LinkedInEmailScraper {
       return false;
     } catch (error) {
       console.error("❌ Login failed:", error.message);
-      // Continue without login
       return false;
     }
+  }
+
+  // IMPROVEMENT 10: Human-like typing function
+  async humanLikeType(element, text) {
+    for (const char of text) {
+      await element.type(char, {
+        delay: 50 + Math.random() * 100, // Random delay between 50-150ms
+      });
+    }
+  }
+
+  // IMPROVEMENT 11: Enhanced login verification
+  async verifyLoginStatus(page) {
+    const checks = [
+      // Check 1: Look for logged-in elements
+      async () => {
+        const hasNav = await page.evaluate(() => {
+          return (
+            document.querySelector(".global-nav, .feed-identity-module") !==
+            null
+          );
+        });
+        if (hasNav) return { success: true };
+        return null;
+      },
+
+      // Check 2: Check URL
+      async () => {
+        const url = page.url();
+        if (url.includes("/feed") || url.includes("/mynetwork")) {
+          return { success: true };
+        }
+        return null;
+      },
+
+      // Check 3: Look for security challenges
+      async () => {
+        const hasChallenge = await page.evaluate(() => {
+          const challengeTexts = [
+            "verify",
+            "checkpoint",
+            "challenge",
+            "security",
+            "unusual activity",
+            "confirm your identity",
+          ];
+          const bodyText = document.body.textContent.toLowerCase();
+          return challengeTexts.some((text) => bodyText.includes(text));
+        });
+
+        if (hasChallenge) {
+          return { success: false, reason: "Security challenge detected" };
+        }
+        return null;
+      },
+
+      // Check 4: Look for error messages
+      async () => {
+        const hasError = await page.evaluate(() => {
+          const errorSelectors = [
+            ".error-message",
+            ".alert-danger",
+            '[role="alert"]',
+          ];
+          for (const selector of errorSelectors) {
+            const element = document.querySelector(selector);
+            if (element && element.textContent.trim()) {
+              return element.textContent.trim();
+            }
+          }
+          return null;
+        });
+
+        if (hasError) {
+          return { success: false, reason: `Error: ${hasError}` };
+        }
+        return null;
+      },
+    ];
+
+    // Run all checks
+    for (const check of checks) {
+      const result = await check();
+      if (result) return result;
+    }
+
+    return {
+      success: false,
+      reason: "Unknown - could not verify login status",
+    };
   }
 
   /**
