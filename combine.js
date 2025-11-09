@@ -1,5 +1,29 @@
-const puppeteer = require("puppeteer");
+require("dotenv").config();
 const fs = require("fs");
+
+// Conditional imports for Vercel compatibility
+let puppeteer, puppeteerCore, chromium;
+
+// Try to import puppeteer (for local development)
+try {
+  puppeteer = require("puppeteer");
+} catch (e) {
+  console.log("puppeteer not available, will use puppeteer-core");
+}
+
+// Try to import puppeteer-core (for production/Vercel)
+try {
+  puppeteerCore = require("puppeteer-core");
+} catch (e) {
+  console.log("puppeteer-core not available");
+}
+
+// Try to import chromium-min (for Vercel)
+try {
+  chromium = require("@sparticuz/chromium-min");
+} catch (e) {
+  console.log("@sparticuz/chromium-min not available");
+}
 
 class LinkedInEmailScraper {
   constructor() {
@@ -15,7 +39,68 @@ class LinkedInEmailScraper {
     this.linkedinScrapingTime = 0;
     this.emailFindingTime = 0;
     this.resultsSavingTime = 0;
-    this.searchRoles = ["hr", "software engineer", "software developer"]; // Default search roles
+    this.searchRoles = ["hr", "software engineer", "software developer"];
+    this.navigationTimeout = 90000;
+
+    // Check if running in production (Vercel)
+    this.isProduction =
+      process.env.NODE_ENV === "production" ||
+      process.env.VERCEL_ENV === "production";
+  }
+
+  /**
+   * Launch browser with Vercel compatibility
+   */
+  async launchBrowser() {
+    if (this.isProduction && puppeteerCore && chromium) {
+      // Production/Vercel: Use puppeteer-core with chromium-min
+      console.log("🚀 Launching browser for production (Vercel)...");
+
+      const executablePath = await chromium.executablePath(
+        "https://github.com/Sparticuz/chromium/releases/download/v131.0.1/chromium-v131.0.1-pack.tar"
+      );
+
+      return await puppeteerCore.launch({
+        executablePath,
+        args: chromium.args,
+        headless: chromium.headless,
+        defaultViewport: chromium.defaultViewport,
+      });
+    } else if (puppeteer) {
+      // Development: Use regular puppeteer
+      console.log("🚀 Launching browser for development...");
+      return await puppeteer.launch({
+        headless: this.isProduction ? true : false,
+        args: [
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          "--disable-blink-features=AutomationControlled",
+          "--window-size=1400,1000",
+          "--disable-dev-shm-usage",
+          "--disable-accelerated-2d-canvas",
+          "--disable-gpu",
+        ],
+      });
+    } else if (puppeteerCore) {
+      // Fallback: Use puppeteer-core without chromium
+      console.log(
+        "⚠️ Using puppeteer-core without chromium (may need executablePath)"
+      );
+      return await puppeteerCore.launch({
+        headless: true,
+        args: [
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          "--disable-blink-features=AutomationControlled",
+          "--window-size=1400,1000",
+          "--disable-dev-shm-usage",
+        ],
+      });
+    } else {
+      throw new Error(
+        "No Puppeteer installation found. Please install puppeteer or puppeteer-core with @sparticuz/chromium-min"
+      );
+    }
   }
 
   /**
@@ -43,6 +128,11 @@ class LinkedInEmailScraper {
         }\n`
       );
       console.log(`⏰ Workflow started at: ${new Date().toLocaleString()}\n`);
+      console.log(
+        `🌍 Environment: ${
+          this.isProduction ? "Production (Vercel)" : "Development"
+        }\n`
+      );
 
       // Step 1: Get names from LinkedIn
       console.log("📝 STEP 1: Getting names from LinkedIn...");
@@ -164,99 +254,18 @@ class LinkedInEmailScraper {
   /**
    * Find email with Mailmeteor
    */
-
-  /**
-   * Launch browser with Vercel compatibility
-   */
-  async launchBrowser() {
-    // Define puppeteer variables for conditional imports
-    let puppeteer, puppeteerCore, chromium;
-
-    // Try to import puppeteer (for local development)
-    try {
-      puppeteer = require("puppeteer");
-    } catch (e) {
-      console.log("puppeteer not available, will use puppeteer-core");
-    }
-
-    // Try to import puppeteer-core (for production/Vercel)
-    try {
-      puppeteerCore = require("puppeteer-core");
-    } catch (e) {
-      console.log("puppeteer-core not available");
-    }
-
-    // Try to import chromium-min (for Vercel)
-    try {
-      chromium = require("@sparticuz/chromium-min");
-    } catch (e) {
-      console.log("@sparticuz/chromium-min not available");
-    }
-
-    // Check if running in production (Vercel)
-    const isProduction =
-      process.env.NODE_ENV === "production" ||
-      process.env.VERCEL_ENV === "production";
-
-    if (isProduction && puppeteerCore && chromium) {
-      // Production/Vercel: Use puppeteer-core with chromium-min
-      console.log("🚀 Launching browser for production (Vercel)...");
-
-      const executablePath = await chromium.executablePath(
-        "https://github.com/Sparticuz/chromium/releases/download/v131.0.1/chromium-v131.0.1-pack.tar"
-      );
-
-      return await puppeteerCore.launch({
-        executablePath,
-        args: chromium.args,
-        headless: chromium.headless,
-        defaultViewport: chromium.defaultViewport,
-      });
-    } else if (puppeteer) {
-      // Development: Use regular puppeteer
-      console.log("🚀 Launching browser for development...");
-      return await puppeteer.launch({
-        headless: false,
-        args: [
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
-          "--disable-blink-features=AutomationControlled",
-          "--window-size=1400,1000",
-          "--disable-dev-shm-usage",
-          "--disable-accelerated-2d-canvas",
-          "--disable-gpu",
-        ],
-      });
-    } else if (puppeteerCore) {
-      // Fallback: Use puppeteer-core without chromium
-      console.log(
-        "⚠️ Using puppeteer-core without chromium (may need executablePath)"
-      );
-      return await puppeteerCore.launch({
-        headless: true,
-        args: [
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
-          "--disable-blink-features=AutomationControlled",
-          "--window-size=1400,1000",
-          "--disable-dev-shm-usage",
-        ],
-      });
-    } else {
-      throw new Error(
-        "No Puppeteer installation found. Please install puppeteer or puppeteer-core with @sparticuz/chromium-min"
-      );
-    }
-  }
-
   async findEmailWithMailmeteor(name, domain) {
     let browser;
     let page;
 
     try {
       browser = await this.launchBrowser();
-
       page = await browser.newPage();
+
+      // Increase timeout for production
+      page.setDefaultNavigationTimeout(60000);
+      page.setDefaultTimeout(60000);
+
       await this.setEmailFinderStealthMode(page);
 
       const formattedName = this.formatName(name);
@@ -264,7 +273,7 @@ class LinkedInEmailScraper {
       const url = `${this.emailFinderURL}?name=${formattedName}&domain=${formattedDomain}`;
 
       await page.goto(url, {
-        waitUntil: "networkidle2",
+        waitUntil: "domcontentloaded",
         timeout: 60000,
       });
 
@@ -553,12 +562,21 @@ class LinkedInEmailScraper {
       );
 
       browser = await this.launchBrowser();
-
       page = await browser.newPage();
+
+      // Increase timeouts for production
+      page.setDefaultNavigationTimeout(this.navigationTimeout);
+      page.setDefaultTimeout(this.navigationTimeout);
+
       await this.setStealthMode(page);
 
       // Login to LinkedIn
-      await this.linkedinLogin(page);
+      const loginSuccess = await this.linkedinLogin(page);
+
+      if (!loginSuccess) {
+        console.log("❌ LinkedIn login failed. Continuing without login...");
+        // Continue without login - some company pages might be accessible
+      }
 
       // Get company page and navigate to people section
       const peopleNames = await this.getPeopleFromCompanyPage(
@@ -1204,52 +1222,83 @@ class LinkedInEmailScraper {
   async linkedinLogin(page) {
     try {
       const credentials = this.getLinkedInCredentials();
+
       if (!credentials.email || !credentials.password) {
         console.log("⚠️  No LinkedIn credentials provided");
+        console.log(
+          "💡 Set LINKEDIN_EMAIL and LINKEDIN_PASSWORD environment variables"
+        );
         return false;
       }
 
-      console.log("🔐 Logging into LinkedIn...");
+      console.log("🌐 Navigating to LinkedIn login page...");
+
       await page.goto(`${this.baseURL}/login`, {
         waitUntil: "domcontentloaded",
+        timeout: 30000,
       });
 
-      // Wait for login form
-      await page.waitForFunction(
-        () =>
-          document.querySelector("#username") ||
-          document.querySelector('[name="session_key"]'),
-        { timeout: 15000 }
-      );
+      await this.delay(3000);
+
+      // Wait for login form with more flexible approach
+      try {
+        await page.waitForFunction(
+          () =>
+            document.querySelector("#username") ||
+            document.querySelector('[name="session_key"]'),
+          { timeout: 10000 }
+        );
+      } catch (e) {
+        console.log("⚠️  Login form not found, continuing without login");
+        return false;
+      }
 
       const usernameField =
-        (await page.$("#username")) || (await page.$('[name="session_key"]'));
+        (await page.$("#username")) || (await page.$("[name='session_key']"));
       const passwordField =
         (await page.$("#password")) ||
-        (await page.$('[name="session_password"]'));
+        (await page.$("[name='session_password']"));
 
       if (usernameField && passwordField) {
-        await usernameField.type(credentials.email, { delay: 100 });
-        await passwordField.type(credentials.password, { delay: 100 });
+        console.log("📝 Filling login form...");
 
-        const submitButton = await page.$('button[type="submit"]');
+        await usernameField.type(credentials.email, { delay: 100 });
+        await this.delay(500);
+        await passwordField.type(credentials.password, { delay: 100 });
+        await this.delay(500);
+
+        const submitButton = await page.$("button[type='submit']");
         if (submitButton) {
+          console.log("🔘 Clicking submit button...");
           await submitButton.click();
-          await Promise.race([
-            page.waitForNavigation({
-              waitUntil: "domcontentloaded",
-              timeout: 20000,
-            }),
-            page.waitForSelector(".global-nav", { timeout: 20000 }),
-          ]);
-          console.log("✅ Successfully logged into LinkedIn");
-          await this.delay(3000);
-          return true;
+
+          // Wait for navigation with more flexible approach
+          await this.delay(8000);
+
+          // Check if login was successful
+          const isLoggedIn = await page.evaluate(() => {
+            return (
+              document.querySelector(".global-nav, .feed-identity-module") !==
+              null
+            );
+          });
+
+          if (isLoggedIn) {
+            console.log("✅ Successfully logged into LinkedIn");
+            await this.delay(3000);
+            return true;
+          } else {
+            console.log("⚠️  Login may have failed or requires verification");
+            // Continue without login
+            return false;
+          }
         }
       }
+
       return false;
     } catch (error) {
-      console.log("❌ Login failed:", error.message);
+      console.error("❌ Login failed:", error.message);
+      // Continue without login
       return false;
     }
   }
@@ -1259,38 +1308,63 @@ class LinkedInEmailScraper {
    */
   async setStealthMode(page) {
     await page.setViewport({ width: 1400, height: 1000 });
+
     await page.evaluateOnNewDocument(() => {
       Object.defineProperty(navigator, "webdriver", { get: () => undefined });
       Object.defineProperty(navigator, "plugins", {
         get: () => [1, 2, 3, 4, 5],
       });
+      Object.defineProperty(navigator, "languages", {
+        get: () => ["en-US", "en"],
+      });
+
+      // Override permissions
+      const originalQuery = window.navigator.permissions.query;
+      window.navigator.permissions.query = (parameters) =>
+        parameters.name === "notifications"
+          ? Promise.resolve({ state: Notification.permission })
+          : originalQuery(parameters);
     });
+
     await page.setUserAgent(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     );
+
+    await page.setExtraHTTPHeaders({
+      "Accept-Language": "en-US,en;q=0.9",
+      "Accept-Encoding": "gzip, deflate, br",
+    });
   }
 
   /**
    * Get LinkedIn credentials
    */
   getLinkedInCredentials() {
+    // Priority: Environment variables > Config file
     if (process.env.LINKEDIN_EMAIL && process.env.LINKEDIN_PASSWORD) {
       return {
         email: process.env.LINKEDIN_EMAIL,
         password: process.env.LINKEDIN_PASSWORD,
       };
     }
-    try {
-      if (fs.existsSync("./linkedin_config.json")) {
-        const config = JSON.parse(
-          fs.readFileSync("./linkedin_config.json", "utf8")
-        );
-        return {
-          email: config.email || "",
-          password: config.password || "",
-        };
+
+    // Try to read from config file (only works in development)
+    if (!this.isProduction) {
+      try {
+        if (fs.existsSync("./linkedin_config.json")) {
+          const config = JSON.parse(
+            fs.readFileSync("./linkedin_config.json", "utf8")
+          );
+          return {
+            email: config.email || "",
+            password: config.password || "",
+          };
+        }
+      } catch (error) {
+        console.error("Error reading config file:", error.message);
       }
-    } catch (error) {}
+    }
+
     return { email: "", password: "" };
   }
 
@@ -1338,26 +1412,34 @@ class LinkedInEmailScraper {
       })),
     };
 
-    const filename = `results_${companyName.replace(
-      /\s+/g,
-      "_"
-    )}_${new Date().getTime()}.json`;
-    fs.writeFileSync(filename, JSON.stringify(output, null, 2));
+    // Only save files in development (file system available)
+    if (!this.isProduction) {
+      const filename = `results_${companyName.replace(
+        /\s+/g,
+        "_"
+      )}_${new Date().getTime()}.json`;
+      fs.writeFileSync(filename, JSON.stringify(output, null, 2));
 
-    console.log(`✅ Combined results saved to: ${filename}`);
+      console.log(`✅ Combined results saved to: ${filename}`);
 
-    // Also save just the successful emails
-    const successfulEmails = emailResults.detailedResults
-      .filter((r) => r.email)
-      .map((r) => r.email);
+      // Also save just the successful emails
+      const successfulEmails = emailResults.detailedResults
+        .filter((r) => r.email)
+        .map((r) => r.email);
 
-    fs.writeFileSync(
-      `emails_${companyName.replace(/\s+/g, "_")}.json`,
-      JSON.stringify(successfulEmails, null, 2)
-    );
-    console.log(
-      `✅ Email list saved to: emails_${companyName.replace(/\s+/g, "_")}.json`
-    );
+      fs.writeFileSync(
+        `emails_${companyName.replace(/\s+/g, "_")}.json`,
+        JSON.stringify(successfulEmails, null, 2)
+      );
+      console.log(
+        `✅ Email list saved to: emails_${companyName.replace(
+          /\s+/g,
+          "_"
+        )}.json`
+      );
+    } else {
+      console.log("⚠️ File saving skipped in production (Vercel)");
+    }
   }
 
   /**
@@ -1373,12 +1455,15 @@ class LinkedInEmailScraper {
     console.log(`🌐 Domain: ${domain}`);
     console.log(`📝 Names from LinkedIn: ${linkedinNames.length}`);
     console.log(`📧 Emails found: ${foundEmails.length}`);
-    console.log(
-      `🎯 Success rate: ${(
-        (foundEmails.length / linkedinNames.length) *
-        100
-      ).toFixed(1)}%`
-    );
+
+    if (linkedinNames.length > 0) {
+      console.log(
+        `🎯 Success rate: ${(
+          (foundEmails.length / linkedinNames.length) *
+          100
+        ).toFixed(1)}%`
+      );
+    }
 
     console.log("\n⏱️  DETAILED TIMING BREAKDOWN:");
     console.log("-".repeat(40));
@@ -1394,23 +1479,25 @@ class LinkedInEmailScraper {
     );
 
     // Calculate percentages
-    const linkedinPercentage = (
-      (this.linkedinScrapingTime / this.totalProcessingTime) *
-      100
-    ).toFixed(1);
-    const emailPercentage = (
-      (this.emailFindingTime / this.totalProcessingTime) *
-      100
-    ).toFixed(1);
-    const savingPercentage = (
-      (this.resultsSavingTime / this.totalProcessingTime) *
-      100
-    ).toFixed(1);
+    if (this.totalProcessingTime > 0) {
+      const linkedinPercentage = (
+        (this.linkedinScrapingTime / this.totalProcessingTime) *
+        100
+      ).toFixed(1);
+      const emailPercentage = (
+        (this.emailFindingTime / this.totalProcessingTime) *
+        100
+      ).toFixed(1);
+      const savingPercentage = (
+        (this.resultsSavingTime / this.totalProcessingTime) *
+        100
+      ).toFixed(1);
 
-    console.log(`\n📊 TIME DISTRIBUTION:`);
-    console.log(`LinkedIn: ${linkedinPercentage}%`);
-    console.log(`Email Finding: ${emailPercentage}%`);
-    console.log(`Saving: ${savingPercentage}%`);
+      console.log(`\n📊 TIME DISTRIBUTION:`);
+      console.log(`LinkedIn: ${linkedinPercentage}%`);
+      console.log(`Email Finding: ${emailPercentage}%`);
+      console.log(`Saving: ${savingPercentage}%`);
+    }
 
     if (foundEmails.length > 0) {
       console.log("\n✅ FOUND EMAILS:");
