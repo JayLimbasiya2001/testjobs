@@ -82,7 +82,7 @@ class LinkedInJobScraper {
       // Development: Use regular puppeteer
       console.log("🚀 Launching browser for development...");
       return await puppeteer.launch({
-        headless: false,
+        headless: false, // Keep false for debugging
         args: [
           "--no-sandbox",
           "--disable-setuid-sandbox",
@@ -437,12 +437,13 @@ class LinkedInJobScraper {
   }
 
   /**
-   * Search jobs for a specific location
+   * Search jobs for a specific location - IMPROVED VERSION
    */
   async searchJobsForLocation(page, location) {
     try {
       console.log(`🔍 Searching for jobs in ${location}...`);
 
+      // Use the better search method from the second file
       const searchSuccess = await this.performSearch(page, location);
 
       if (!searchSuccess) {
@@ -450,51 +451,10 @@ class LinkedInJobScraper {
         return;
       }
 
-      // Wait for search results to load
-      console.log("⏳ Waiting for search results to load...");
-      await this.delay(8000);
-
-      // Check if page loaded correctly
-      const currentUrl = page.url();
-      console.log(`📍 Current URL: ${currentUrl}`);
-      
-      if (!currentUrl.includes("/jobs/search")) {
-        console.log("⚠️  Warning: Not on jobs search page");
-      }
+      await this.delay(5000);
 
       // Apply filters
       await this.applyFilters(page);
-
-      // Additional wait after filters
-      await this.delay(5000);
-
-      // Check for "no results" or blocking messages
-      const pageStatus = await page.evaluate(() => {
-        const bodyText = document.body.textContent.toLowerCase();
-        return {
-          hasNoResults: bodyText.includes("no jobs found") || 
-                       bodyText.includes("we couldn't find") ||
-                       bodyText.includes("no matching jobs"),
-          hasBlocked: bodyText.includes("blocked") || 
-                     bodyText.includes("suspicious activity") ||
-                     bodyText.includes("verify"),
-          hasRateLimit: bodyText.includes("too many requests") ||
-                       bodyText.includes("rate limit"),
-          pageText: document.body.textContent.substring(0, 500),
-        };
-      });
-
-      if (pageStatus.hasNoResults) {
-        console.log("⚠️  No jobs found for this location/query");
-        console.log("📄 Page text snippet:", pageStatus.pageText);
-        return;
-      }
-
-      if (pageStatus.hasBlocked || pageStatus.hasRateLimit) {
-        console.log("⚠️  LinkedIn may have blocked or rate-limited the request");
-        console.log("📄 Page text snippet:", pageStatus.pageText);
-        return;
-      }
 
       // Get job list and scrape each job
       let scrapedCount = 0;
@@ -509,37 +469,9 @@ class LinkedInJobScraper {
         scrollAttempts++;
         console.log(`\n🔄 Scroll attempt ${scrollAttempts} for ${location}...`);
 
-        // Get all job cards on current page
+        // Get all job cards on current page - IMPROVED METHOD
         const jobCards = await this.getJobCardsList(page);
         console.log(`📋 Found ${jobCards.length} job cards on page`);
-        
-        // If no cards found on first attempt, wait longer and try again
-        if (jobCards.length === 0 && scrollAttempts === 1) {
-          console.log("⚠️  No job cards found on first attempt. Waiting longer...");
-          await this.delay(10000);
-          
-          // Try scrolling to trigger lazy loading
-          await page.evaluate(() => {
-            window.scrollTo(0, document.body.scrollHeight / 2);
-          });
-          await this.delay(5000);
-          
-          // Try getting cards again
-          const jobCardsRetry = await this.getJobCardsList(page);
-          console.log(`📋 Found ${jobCardsRetry.length} job cards after retry`);
-          
-          if (jobCardsRetry.length === 0) {
-            console.log("❌ Still no job cards found. The page might not have loaded correctly.");
-            // Take a screenshot for debugging (if possible)
-            try {
-              await page.screenshot({ path: `debug-${location}-${Date.now()}.png`, fullPage: true });
-              console.log("📸 Screenshot saved for debugging");
-            } catch (e) {
-              console.log("⚠️  Could not save screenshot");
-            }
-            break;
-          }
-        }
 
         // Scrape each job card
         for (
@@ -597,11 +529,11 @@ class LinkedInJobScraper {
   }
 
   /**
-   * Perform search using the search form
+   * Perform search using the search form - IMPROVED VERSION
    */
   async performSearch(page, location) {
     try {
-      // Method 1: Use search inputs on the page
+      // Method 1: Use search inputs on the page (from working file)
       const searchSuccess = await page.evaluate(
         (query, loc) => {
           // Find keyword search box
@@ -658,30 +590,17 @@ class LinkedInJobScraper {
         return true;
       }
 
-      // Method 2: If form method fails, try URL approach
+      // Method 2: If form method fails, try URL approach with better error handling
       console.log("⚠️ Form method failed, trying URL navigation...");
       const searchUrl = this.buildSearchUrl(location);
 
       try {
         await page.goto(searchUrl, {
-          waitUntil: "networkidle2",
-          timeout: 90000,
+          waitUntil: "domcontentloaded",
+          timeout: 60000,
         });
 
-        console.log("⏳ Waiting for page to fully render...");
-        await this.delay(8000);
-
-        // Wait for job list to start appearing
-        try {
-          await page.waitForSelector(
-            ".jobs-search-results-list, .scaffold-layout__list-container, [data-job-id], .jobs-search-results__list-item",
-            { timeout: 15000 }
-          );
-          console.log("✅ Job results container found");
-        } catch (e) {
-          console.log("⚠️  Job results container not immediately visible, continuing...");
-        }
-
+        await this.delay(5000);
         console.log("✅ URL navigation successful");
         return true;
       } catch (navError) {
@@ -696,22 +615,11 @@ class LinkedInJobScraper {
         )}`;
 
         await page.goto(simpleUrl, {
-          waitUntil: "networkidle2",
-          timeout: 90000,
+          waitUntil: "domcontentloaded",
+          timeout: 60000,
         });
 
-        await this.delay(8000);
-        
-        // Wait for job list
-        try {
-          await page.waitForSelector(
-            ".jobs-search-results-list, .scaffold-layout__list-container, [data-job-id]",
-            { timeout: 15000 }
-          );
-        } catch (e) {
-          console.log("⚠️  Job results not immediately visible");
-        }
-        
+        await this.delay(5000);
         return true;
       }
     } catch (error) {
@@ -737,7 +645,7 @@ class LinkedInJobScraper {
   }
 
   /**
-   * Apply additional filters on the page
+   * Apply additional filters on the page - IMPROVED VERSION
    */
   async applyFilters(page) {
     try {
@@ -879,151 +787,25 @@ class LinkedInJobScraper {
 
       await this.delay(3000);
       console.log("✅ All filters applied");
-      
-      // Wait for job results to load after applying filters
-      console.log("⏳ Waiting for job results to load...");
-      await this.waitForJobResults(page);
-      
     } catch (error) {
       console.error("Error applying filters:", error.message);
     }
   }
 
   /**
-   * Wait for job results to appear on the page
-   */
-  async waitForJobResults(page) {
-    try {
-      // Wait for job list container to appear
-      const jobListSelectors = [
-        ".jobs-search-results-list",
-        ".scaffold-layout__list-container",
-        ".jobs-search-results",
-        "[data-job-id]",
-        ".job-card-container",
-        ".jobs-search-results__list-item",
-      ];
-
-      let jobListFound = false;
-      for (const selector of jobListSelectors) {
-        try {
-          await page.waitForSelector(selector, { timeout: 10000 });
-          console.log(`✅ Found job list container: ${selector}`);
-          jobListFound = true;
-          break;
-        } catch (e) {
-          continue;
-        }
-      }
-
-      if (!jobListFound) {
-        console.log("⚠️  Job list container not found with standard selectors");
-      }
-
-      // Additional wait for dynamic content and network activity
-      await this.delay(8000);
-
-      // Scroll to trigger lazy loading
-      await page.evaluate(() => {
-        window.scrollTo(0, 500);
-      });
-      await this.delay(2000);
-
-      // Scroll back to top
-      await page.evaluate(() => {
-        window.scrollTo(0, 0);
-      });
-      await this.delay(2000);
-
-      // Debug: Check what's actually on the page
-      const pageInfo = await page.evaluate(() => {
-        const jobCards = document.querySelectorAll(
-          ".jobs-search-results__list-item, .job-card-container, .scaffold-layout__list-item, [data-job-id], li[data-occludable-job-id], .job-card-list__entity-lockup"
-        );
-        const jobList = document.querySelector(
-          ".jobs-search-results-list, .scaffold-layout__list-container, .jobs-search-results, ul.scaffold-layout__list"
-        );
-        return {
-          jobCardsCount: jobCards.length,
-          jobListExists: jobList !== null,
-          url: window.location.href,
-          title: document.title,
-          hasResults: document.body.textContent.includes("results") || document.body.textContent.includes("jobs"),
-        };
-      });
-
-      console.log("📊 Page debug info:", JSON.stringify(pageInfo, null, 2));
-
-    } catch (error) {
-      console.error("Error waiting for job results:", error.message);
-    }
-  }
-
-  /**
-   * Get list of job cards
+   * Get list of job cards - IMPROVED VERSION
    */
   async getJobCardsList(page) {
-    // First, try to wait for at least one job card to appear
-    const jobCardSelectors = [
-      ".jobs-search-results__list-item",
-      ".job-card-container",
-      ".scaffold-layout__list-item",
-      "[data-job-id]",
-      "li[data-occludable-job-id]",
-      ".job-card-list__entity-lockup",
-      "ul.scaffold-layout__list > li",
-      ".jobs-search-results__list-item--active",
-    ];
-
-    let cardsFound = false;
-    for (const selector of jobCardSelectors) {
-      try {
-        await page.waitForSelector(selector, { timeout: 5000 });
-        cardsFound = true;
-        break;
-      } catch (e) {
-        continue;
-      }
-    }
-
-    // Get all job cards with multiple selector strategies
     return await page.evaluate(() => {
-      // Try multiple selectors
-      const selectors = [
-        ".jobs-search-results__list-item",
-        ".job-card-container",
-        ".scaffold-layout__list-item",
-        "[data-job-id]",
-        "li[data-occludable-job-id]",
-        ".job-card-list__entity-lockup",
-        "ul.scaffold-layout__list > li",
-      ];
-
-      let cards = [];
-      for (const selector of selectors) {
-        const elements = document.querySelectorAll(selector);
-        if (elements.length > 0) {
-          cards = Array.from(elements);
-          break;
-        }
-      }
-
-      // If still no cards, try finding any list items in job results area
-      if (cards.length === 0) {
-        const jobResultsArea = document.querySelector(
-          ".jobs-search-results, .scaffold-layout__list-container, .jobs-search-results-list"
-        );
-        if (jobResultsArea) {
-          cards = Array.from(jobResultsArea.querySelectorAll("li, [role='listitem']"));
-        }
-      }
-
-      return cards.map((card, index) => index);
+      const cards = document.querySelectorAll(
+        ".jobs-search-results__list-item, .job-card-container, .scaffold-layout__list-item, [data-job-id]"
+      );
+      return Array.from(cards).map((card, index) => index);
     });
   }
 
   /**
-   * Scrape individual job card
+   * Scrape individual job card - IMPROVED VERSION
    */
   async scrapeJobCard(page, index, location, processedJobIds) {
     try {
@@ -1264,7 +1046,7 @@ class LinkedInJobScraper {
   }
 
   /**
-   * LinkedIn login
+   * LinkedIn login - IMPROVED VERSION
    */
   async linkedinLogin(page) {
     try {
@@ -1278,264 +1060,56 @@ class LinkedInJobScraper {
         return false;
       }
 
-      console.log("🌐 Navigating to LinkedIn login page...");
-      
-      // Navigate to login page with better wait strategy
       await page.goto(`${this.baseURL}/login`, {
-        waitUntil: "networkidle2",
-        timeout: 60000,
+        waitUntil: "domcontentloaded",
+        timeout: 30000,
       });
 
-      console.log("⏳ Waiting for page to fully load...");
-      await this.delay(5000);
+      await this.delay(3000);
 
-      // Check if already logged in
-      const currentUrl = page.url();
-      if (!currentUrl.includes("/login") && !currentUrl.includes("/uas/login")) {
-        console.log("✅ Already logged in to LinkedIn");
-        return true;
-      }
+      // Wait for login form
+      await page.waitForSelector("#username, [name='session_key']", {
+        timeout: 15000,
+      });
 
-      // Try multiple selector strategies for username field
-      console.log("🔍 Looking for login form fields...");
-      
-      let usernameField = null;
-      let passwordField = null;
-      
-      // First, wait for any input fields to appear (more lenient)
-      try {
-        await page.waitForSelector("input", { timeout: 10000 });
-      } catch (e) {
-        console.log("⚠️  No input fields found on page");
-      }
-      
-      const usernameSelectors = [
-        "#username",
-        "input[name='session_key']",
-        "input[id='username']",
-        "input[type='text'][autocomplete='username']",
-        "input[aria-label*='Email']",
-        "input[aria-label*='email']",
-        "input[aria-label*='Phone']",
-        "input[aria-label*='phone']",
-        "input[placeholder*='Email']",
-        "input[placeholder*='email']",
-      ];
-      
-      const passwordSelectors = [
-        "#password",
-        "input[name='session_password']",
-        "input[id='password']",
-        "input[type='password']",
-        "input[aria-label*='Password']",
-        "input[aria-label*='password']",
-        "input[placeholder*='Password']",
-        "input[placeholder*='password']",
-      ];
+      const usernameField =
+        (await page.$("#username")) || (await page.$("[name='session_key']"));
+      const passwordField =
+        (await page.$("#password")) ||
+        (await page.$("[name='session_password']"));
 
-      // Try to find username field with multiple strategies (faster approach)
-      for (const selector of usernameSelectors) {
-        try {
-          usernameField = await page.$(selector);
-          if (usernameField) {
-            console.log(`✅ Found username field with selector: ${selector}`);
-            break;
-          }
-        } catch (e) {
-          // Continue to next selector
-          continue;
-        }
-      }
-
-      // Try to find password field with multiple strategies
-      for (const selector of passwordSelectors) {
-        try {
-          passwordField = await page.$(selector);
-          if (passwordField) {
-            console.log(`✅ Found password field with selector: ${selector}`);
-            break;
-          }
-        } catch (e) {
-          // Continue to next selector
-          continue;
-        }
-      }
-
-      // If still not found, try evaluating in page context
-      if (!usernameField || !passwordField) {
-        console.log("⚠️  Fields not found with standard selectors, trying page evaluation...");
-        
-        const fields = await page.evaluate(() => {
-          const inputs = Array.from(document.querySelectorAll("input"));
-          const username = inputs.find(
-            (input) =>
-              input.type === "text" &&
-              (input.id === "username" ||
-                input.name === "session_key" ||
-                input.placeholder?.toLowerCase().includes("email") ||
-                input.ariaLabel?.toLowerCase().includes("email"))
-          );
-          const password = inputs.find(
-            (input) =>
-              input.type === "password" &&
-              (input.id === "password" ||
-                input.name === "session_password" ||
-                input.placeholder?.toLowerCase().includes("password") ||
-                input.ariaLabel?.toLowerCase().includes("password"))
-          );
-          return { username: username, password: password };
-        });
-
-        if (fields.username && fields.password) {
-          // Use evaluate to interact with fields
-          await page.evaluate(
-            (email, password) => {
-              const inputs = Array.from(document.querySelectorAll("input"));
-              const username = inputs.find(
-                (input) =>
-                  input.type === "text" &&
-                  (input.id === "username" ||
-                    input.name === "session_key" ||
-                    input.placeholder?.toLowerCase().includes("email"))
-              );
-              const pass = inputs.find(
-                (input) =>
-                  input.type === "password" &&
-                  (input.id === "password" ||
-                    input.name === "session_password" ||
-                    input.placeholder?.toLowerCase().includes("password"))
-              );
-              if (username) {
-                username.value = email;
-                username.dispatchEvent(new Event("input", { bubbles: true }));
-                username.dispatchEvent(new Event("change", { bubbles: true }));
-              }
-              if (pass) {
-                pass.value = password;
-                pass.dispatchEvent(new Event("input", { bubbles: true }));
-                pass.dispatchEvent(new Event("change", { bubbles: true }));
-              }
-            },
-            credentials.email,
-            credentials.password
-          );
-          await this.delay(1000);
-
-          // Find and click submit button
-          const submitClicked = await page.evaluate(() => {
-            const buttons = Array.from(
-              document.querySelectorAll("button[type='submit'], button.sign-in-form__submit-button")
-            );
-            for (const button of buttons) {
-              const text = button.textContent?.toLowerCase() || "";
-              if (
-                text.includes("sign in") ||
-                text.includes("signin") ||
-                button.type === "submit"
-              ) {
-                button.click();
-                return true;
-              }
-            }
-            return false;
-          });
-
-          if (submitClicked) {
-            console.log("✅ Login form submitted");
-            await this.delay(10000);
-
-            // Check if login was successful
-            const isLoggedIn = await page.evaluate(() => {
-              return (
-                document.querySelector(
-                  ".global-nav, .feed-identity-module, [data-control-name='nav.settings']"
-                ) !== null || !window.location.href.includes("/login")
-              );
-            });
-
-            if (isLoggedIn) {
-              console.log("✅ Successfully logged into LinkedIn");
-              await this.delay(3000);
-              return true;
-            }
-          }
-        }
-      }
-
-      // Standard approach if fields were found
       if (usernameField && passwordField) {
-        console.log("📝 Filling login form...");
-        
-        // Clear fields first
-        await usernameField.click({ clickCount: 3 });
-        await usernameField.type(credentials.email, { delay: 150 });
-        await this.delay(1000);
-        
-        await passwordField.click({ clickCount: 3 });
-        await passwordField.type(credentials.password, { delay: 150 });
-        await this.delay(1000);
+        await usernameField.type(credentials.email, { delay: 100 });
+        await this.delay(500);
+        await passwordField.type(credentials.password, { delay: 100 });
+        await this.delay(500);
 
-        // Find submit button with multiple strategies
-        let submitButton = await page.$("button[type='submit']");
-        if (!submitButton) {
-          submitButton = await page.$("button.sign-in-form__submit-button");
-        }
-        if (!submitButton) {
-          // Try to find by text
-          submitButton = await page.evaluateHandle(() => {
-            const buttons = Array.from(document.querySelectorAll("button"));
-            return buttons.find(
-              (btn) =>
-                btn.textContent?.toLowerCase().includes("sign in") ||
-                btn.type === "submit"
-            );
-          });
-        }
-
+        const submitButton = await page.$("button[type='submit']");
         if (submitButton) {
-          console.log("🔘 Clicking submit button...");
           await submitButton.click();
-          await this.delay(10000);
+
+          // Wait for navigation
+          await this.delay(8000);
 
           // Check if login was successful
           const isLoggedIn = await page.evaluate(() => {
-            const url = window.location.href;
-            const hasNav = document.querySelector(
-              ".global-nav, .feed-identity-module, [data-control-name='nav.settings']"
+            return (
+              document.querySelector(".global-nav, .feed-identity-module") !==
+              null
             );
-            return hasNav !== null || (!url.includes("/login") && !url.includes("/uas/login"));
           });
 
           if (isLoggedIn) {
             console.log("✅ Successfully logged into LinkedIn");
             await this.delay(3000);
             return true;
-          } else {
-            console.log("⚠️  Login may have failed or requires additional verification");
-            // Check for CAPTCHA or verification
-            const needsVerification = await page.evaluate(() => {
-              return (
-                document.body.textContent.includes("captcha") ||
-                document.body.textContent.includes("verify") ||
-                document.body.textContent.includes("security check")
-              );
-            });
-            if (needsVerification) {
-              console.log("⚠️  LinkedIn may require manual verification (CAPTCHA)");
-            }
           }
-        } else {
-          console.log("❌ Could not find submit button");
         }
-      } else {
-        console.log("❌ Could not find username or password fields");
-        console.log("💡 The page might require manual intervention or LinkedIn has changed their login page");
       }
 
       return false;
     } catch (error) {
       console.error("❌ Login failed:", error.message);
-      console.error("📍 Error details:", error.stack);
       return false;
     }
   }
