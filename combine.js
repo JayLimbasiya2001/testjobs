@@ -1222,6 +1222,9 @@ class LinkedInEmailScraper {
   /**
    * LinkedIn login
    */
+  /**
+   * LinkedIn login
+   */
   async linkedinLogin(page) {
     try {
       const credentials = this.getLinkedInCredentials();
@@ -1243,10 +1246,18 @@ class LinkedInEmailScraper {
 
       await this.delay(3000);
 
-      // Wait for login form
-      await page.waitForSelector("#username, [name='session_key']", {
-        timeout: 15000,
-      });
+      // Wait for login form with more flexible approach
+      try {
+        await page.waitForFunction(
+          () =>
+            document.querySelector("#username") ||
+            document.querySelector('[name="session_key"]'),
+          { timeout: 10000 }
+        );
+      } catch (e) {
+        console.log("⚠️  Login form not found, continuing without login");
+        return false;
+      }
 
       const usernameField =
         (await page.$("#username")) || (await page.$("[name='session_key']"));
@@ -1267,7 +1278,7 @@ class LinkedInEmailScraper {
           console.log("🔘 Clicking submit button...");
           await submitButton.click();
 
-          // Wait for navigation
+          // Wait for navigation with more flexible approach
           await this.delay(8000);
 
           // Check if login was successful
@@ -1284,6 +1295,8 @@ class LinkedInEmailScraper {
             return true;
           } else {
             console.log("⚠️  Login may have failed or requires verification");
+            // Continue without login
+            return false;
           }
         }
       }
@@ -1291,6 +1304,7 @@ class LinkedInEmailScraper {
       return false;
     } catch (error) {
       console.error("❌ Login failed:", error.message);
+      // Continue without login
       return false;
     }
   }
