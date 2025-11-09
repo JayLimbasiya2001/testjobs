@@ -63,21 +63,38 @@ class LinkedInJobScraper {
   /**
    * Launch browser with Vercel compatibility
    */
+  /**
+   * Launch browser with Vercel compatibility - IMPROVED
+   */
   async launchBrowser() {
     if (this.isProduction && puppeteerCore && chromium) {
       // Production/Vercel: Use puppeteer-core with chromium-min
       console.log("🚀 Launching browser for production (Vercel)...");
 
-      const executablePath = await chromium.executablePath(
-        "https://github.com/Sparticuz/chromium/releases/download/v131.0.1/chromium-v131.0.1-pack.tar"
-      );
+      try {
+        const executablePath = await chromium.executablePath(
+          "https://github.com/Sparticuz/chromium/releases/download/v131.0.1/chromium-v131.0.1-pack.tar"
+        );
 
-      return await puppeteerCore.launch({
-        executablePath,
-        args: chromium.args,
-        headless: chromium.headless,
-        defaultViewport: chromium.defaultViewport,
-      });
+        return await puppeteerCore.launch({
+          executablePath,
+          args: [
+            ...chromium.args,
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-accelerated-2d-canvas",
+            "--disable-gpu",
+            "--window-size=1400,1000",
+          ],
+          headless: chromium.headless,
+          defaultViewport: chromium.defaultViewport,
+          ignoreHTTPSErrors: true,
+        });
+      } catch (error) {
+        console.error("❌ Chromium launch failed:", error.message);
+        throw error;
+      }
     } else if (puppeteer) {
       // Development: Use regular puppeteer
       console.log("🚀 Launching browser for development...");
@@ -94,18 +111,15 @@ class LinkedInJobScraper {
         ],
       });
     } else if (puppeteerCore) {
-      // Fallback: Use puppeteer-core without chromium (may need custom executable path)
-      console.log(
-        "⚠️ Using puppeteer-core without chromium (may need executablePath)"
-      );
+      // Fallback: Use puppeteer-core without chromium
+      console.log("⚠️ Using puppeteer-core without chromium");
       return await puppeteerCore.launch({
         headless: true,
         args: [
           "--no-sandbox",
           "--disable-setuid-sandbox",
-          "--disable-blink-features=AutomationControlled",
-          "--window-size=1400,1000",
           "--disable-dev-shm-usage",
+          "--window-size=1400,1000",
         ],
       });
     } else {
@@ -114,7 +128,6 @@ class LinkedInJobScraper {
       );
     }
   }
-
   /**
    * Main function to scrape jobs
    */
@@ -1048,6 +1061,9 @@ class LinkedInJobScraper {
   /**
    * LinkedIn login - IMPROVED VERSION
    */
+  /**
+   * LinkedIn login - IMPROVED VERSION for production
+   */
   async linkedinLogin(page) {
     try {
       const credentials = this.getLinkedInCredentials();
@@ -1060,56 +1076,319 @@ class LinkedInJobScraper {
         return false;
       }
 
+      console.log("🌐 Navigating to LinkedIn login page...");
+
+      // Navigate to login page with better wait strategy
       await page.goto(`${this.baseURL}/login`, {
-        waitUntil: "domcontentloaded",
-        timeout: 30000,
+        waitUntil: "networkidle2",
+        timeout: 60000,
       });
 
-      await this.delay(3000);
+      console.log("⏳ Waiting for page to fully load...");
+      await this.delay(5000);
 
-      // Wait for login form
-      await page.waitForSelector("#username, [name='session_key']", {
-        timeout: 15000,
-      });
+      // Check if already logged in
+      const currentUrl = page.url();
+      if (
+        !currentUrl.includes("/login") &&
+        !currentUrl.includes("/uas/login")
+      ) {
+        console.log("✅ Already logged in to LinkedIn");
+        return true;
+      }
 
-      const usernameField =
-        (await page.$("#username")) || (await page.$("[name='session_key']"));
-      const passwordField =
-        (await page.$("#password")) ||
-        (await page.$("[name='session_password']"));
+      console.log("🔍 Looking for login form fields...");
 
-      if (usernameField && passwordField) {
+      // Multiple strategies to find login fields
+      const usernameSelectors = [
+        "#username",
+        "input[name='session_key']",
+        "input[type='text'][autocomplete='username']",
+        "input[autocomplete='username']",
+        "input[id*='username']",
+        "input[name*='username']",
+        "input[type='email']",
+      ];
+
+      const passwordSelectors = [
+        "#password",
+        "input[name='session_password']",
+        "input[type='password']",
+        "input[autocomplete='current-password']",
+      ];
+
+      let usernameField = null;
+      let passwordField = null;
+
+      // Strategy 1: Try each selector individually
+      for (const selector of usernameSelectors) {
+        try {
+          usernameField = await page.$(selector);
+          if (usernameField) {
+            console.log(`✅ Found username field with: ${selector}`);
+            break;
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+
+      for (const selector of passwordSelectors) {
+        try {
+          passwordField = await page.$(selector);
+          if (passwordField) {
+            console.log(`✅ Found password field with: ${selector}`);
+            break;
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+
+      // Strategy 2: If selectors didn't work, try finding by form context
+      if (!usernameField || !passwordField) {
+        console.log("⚠️ Standard selectors failed, trying form context...");
+
+        const fields = await page.evaluate(() => {
+          const inputs = Array.from(document.querySelectorAll("input"));
+          let username = null;
+          let password = null;
+
+          for (const input of inputs) {
+            const type = input.type.toLowerCase();
+            const name = (input.name || "").toLowerCase();
+            const id = (input.id || "").toLowerCase();
+            const placeholder = (input.placeholder || "").toLowerCase();
+
+            // Check for username/email field
+            if (
+              type === "text" ||
+              type === "email" ||
+              name.includes("session_key") ||
+              name.includes("username") ||
+              name.includes("email") ||
+              id.includes("username") ||
+              id.includes("email") ||
+              placeholder.includes("email") ||
+              placeholder.includes("phone")
+            ) {
+              username = input;
+            }
+
+            // Check for password field
+            if (
+              type === "password" ||
+              name.includes("session_password") ||
+              name.includes("password") ||
+              id.includes("password") ||
+              placeholder.includes("password")
+            ) {
+              password = input;
+            }
+          }
+
+          return {
+            username: username ? true : false,
+            password: password ? true : false,
+          };
+        });
+
+        if (fields.username && fields.password) {
+          console.log("✅ Found fields using form context analysis");
+          // Use page.evaluate to fill the form
+          await page.evaluate(
+            (email, password) => {
+              const inputs = Array.from(document.querySelectorAll("input"));
+              let usernameField = null;
+              let passwordField = null;
+
+              for (const input of inputs) {
+                const type = input.type.toLowerCase();
+                const name = (input.name || "").toLowerCase();
+
+                if (
+                  type === "text" ||
+                  type === "email" ||
+                  name.includes("session_key") ||
+                  name.includes("username")
+                ) {
+                  usernameField = input;
+                }
+
+                if (type === "password" || name.includes("session_password")) {
+                  passwordField = input;
+                }
+              }
+
+              if (usernameField) {
+                usernameField.value = email;
+                usernameField.dispatchEvent(
+                  new Event("input", { bubbles: true })
+                );
+                usernameField.dispatchEvent(
+                  new Event("change", { bubbles: true })
+                );
+              }
+
+              if (passwordField) {
+                passwordField.value = password;
+                passwordField.dispatchEvent(
+                  new Event("input", { bubbles: true })
+                );
+                passwordField.dispatchEvent(
+                  new Event("change", { bubbles: true })
+                );
+              }
+            },
+            credentials.email,
+            credentials.password
+          );
+
+          await this.delay(1000);
+        }
+      } else {
+        // Strategy 3: Use the found fields normally
+        console.log("📝 Filling login form...");
+
+        await usernameField.click({ clickCount: 3 });
         await usernameField.type(credentials.email, { delay: 100 });
-        await this.delay(500);
+        await this.delay(1000);
+
+        await passwordField.click({ clickCount: 3 });
         await passwordField.type(credentials.password, { delay: 100 });
-        await this.delay(500);
+        await this.delay(1000);
+      }
 
-        const submitButton = await page.$("button[type='submit']");
+      // Find and click submit button with multiple strategies
+      console.log("🔘 Looking for submit button...");
+
+      let submitButton = null;
+      const submitSelectors = [
+        "button[type='submit']",
+        "button.sign-in-form__submit-button",
+        "input[type='submit']",
+        "button[data-tracking-control-name='homepage-basic_signin-form_submit-button']",
+      ];
+
+      for (const selector of submitSelectors) {
+        submitButton = await page.$(selector);
         if (submitButton) {
-          await submitButton.click();
+          console.log(`✅ Found submit button with: ${selector}`);
+          break;
+        }
+      }
 
-          // Wait for navigation
-          await this.delay(8000);
+      // If no button found by selector, try to find by text
+      if (!submitButton) {
+        submitButton = await page
+          .evaluateHandle(() => {
+            const buttons = Array.from(document.querySelectorAll("button"));
+            return buttons.find((btn) => {
+              const text = (btn.textContent || "").toLowerCase();
+              return (
+                text.includes("sign in") ||
+                text.includes("signin") ||
+                btn.type === "submit"
+              );
+            });
+          })
+          .catch(() => null);
+      }
 
-          // Check if login was successful
-          const isLoggedIn = await page.evaluate(() => {
+      if (submitButton) {
+        console.log("🔘 Clicking submit button...");
+        await submitButton.click();
+
+        // Wait for login to complete with multiple checks
+        console.log("⏳ Waiting for login to complete...");
+        await this.delay(8000);
+
+        // Check if login was successful with multiple methods
+        const isLoggedIn = await page.evaluate(() => {
+          // Method 1: Check for navigation elements
+          const hasNav = document.querySelector(
+            '.global-nav, .feed-identity-module, [data-control-name="nav.settings"]'
+          );
+
+          // Method 2: Check URL
+          const url = window.location.href;
+          const isNotLoginPage =
+            !url.includes("/login") && !url.includes("/uas/login");
+
+          // Method 3: Check for feed content
+          const hasFeed = document.querySelector(
+            ".scaffold-layout, .feed-shared-update-v2"
+          );
+
+          return hasNav || isNotLoginPage || hasFeed;
+        });
+
+        if (isLoggedIn) {
+          console.log("✅ Successfully logged into LinkedIn");
+          await this.delay(3000);
+          return true;
+        } else {
+          console.log(
+            "⚠️ Login may have failed or requires additional verification"
+          );
+
+          // Check for security challenges
+          const hasChallenge = await page.evaluate(() => {
+            const bodyText = document.body.textContent.toLowerCase();
             return (
-              document.querySelector(".global-nav, .feed-identity-module") !==
-              null
+              bodyText.includes("captcha") ||
+              bodyText.includes("verify") ||
+              bodyText.includes("security check") ||
+              bodyText.includes("challenge")
             );
           });
 
-          if (isLoggedIn) {
-            console.log("✅ Successfully logged into LinkedIn");
-            await this.delay(3000);
-            return true;
+          if (hasChallenge) {
+            console.log(
+              "🔐 LinkedIn requires manual verification (CAPTCHA/2FA)"
+            );
+            console.log(
+              "💡 You may need to manually complete the security check"
+            );
+          }
+
+          // Take screenshot for debugging
+          try {
+            if (this.isProduction) {
+              console.log("📸 Login page screenshot saved for debugging");
+              // In production, we can't save files but we can log the page content
+              const pageContent = await page.content();
+              console.log(
+                "📄 Page content snippet:",
+                pageContent.substring(0, 500)
+              );
+            }
+          } catch (e) {
+            console.log("⚠️ Could not capture page content");
           }
         }
+      } else {
+        console.log("❌ Could not find submit button");
       }
 
       return false;
     } catch (error) {
       console.error("❌ Login failed:", error.message);
+
+      // Additional debug info for production
+      if (this.isProduction) {
+        console.log("🔧 Production debug info:");
+        console.log("- Current URL:", await page.url());
+        console.log("- Page title:", await page.title());
+
+        try {
+          const pageText = await page.evaluate(() => document.body.textContent);
+          console.log("- Page text snippet:", pageText.substring(0, 200));
+        } catch (e) {
+          console.log("- Could not extract page text");
+        }
+      }
+
       return false;
     }
   }
@@ -1117,14 +1396,35 @@ class LinkedInJobScraper {
   /**
    * Set stealth mode
    */
+  /**
+   * Set stealth mode - IMPROVED
+   */
   async setStealthMode(page) {
     await page.setViewport({ width: 1400, height: 1000 });
 
+    // Randomize user agent
+    const userAgents = [
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    ];
+
+    const randomUserAgent =
+      userAgents[Math.floor(Math.random() * userAgents.length)];
+    await page.setUserAgent(randomUserAgent);
+
     await page.evaluateOnNewDocument(() => {
-      Object.defineProperty(navigator, "webdriver", { get: () => undefined });
+      // Override webdriver property
+      Object.defineProperty(navigator, "webdriver", {
+        get: () => undefined,
+      });
+
+      // Override plugins
       Object.defineProperty(navigator, "plugins", {
         get: () => [1, 2, 3, 4, 5],
       });
+
+      // Override languages
       Object.defineProperty(navigator, "languages", {
         get: () => ["en-US", "en"],
       });
@@ -1135,15 +1435,26 @@ class LinkedInJobScraper {
         parameters.name === "notifications"
           ? Promise.resolve({ state: Notification.permission })
           : originalQuery(parameters);
-    });
 
-    await page.setUserAgent(
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    );
+      // Mock Chrome runtime
+      window.chrome = {
+        runtime: {},
+      };
+    });
 
     await page.setExtraHTTPHeaders({
       "Accept-Language": "en-US,en;q=0.9",
       "Accept-Encoding": "gzip, deflate, br",
+    });
+
+    // Block images and stylesheets to speed up loading
+    await page.setRequestInterception(true);
+    page.on("request", (req) => {
+      if (["image", "stylesheet", "font"].includes(req.resourceType())) {
+        req.abort();
+      } else {
+        req.continue();
+      }
     });
   }
 
