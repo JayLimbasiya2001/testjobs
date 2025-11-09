@@ -1059,56 +1059,264 @@ class LinkedInJobScraper {
         return false;
       }
 
+      console.log("🌐 Navigating to LinkedIn login page...");
+      
+      // Navigate to login page with better wait strategy
       await page.goto(`${this.baseURL}/login`, {
-        waitUntil: "domcontentloaded",
-        timeout: 30000,
+        waitUntil: "networkidle2",
+        timeout: 60000,
       });
 
-      await this.delay(3000);
+      console.log("⏳ Waiting for page to fully load...");
+      await this.delay(5000);
 
-      // Wait for login form
-      await page.waitForSelector("#username, [name='session_key']", {
-        timeout: 15000,
-      });
+      // Check if already logged in
+      const currentUrl = page.url();
+      if (!currentUrl.includes("/login") && !currentUrl.includes("/uas/login")) {
+        console.log("✅ Already logged in to LinkedIn");
+        return true;
+      }
 
-      const usernameField =
-        (await page.$("#username")) || (await page.$("[name='session_key']"));
-      const passwordField =
-        (await page.$("#password")) ||
-        (await page.$("[name='session_password']"));
+      // Try multiple selector strategies for username field
+      console.log("🔍 Looking for login form fields...");
+      
+      let usernameField = null;
+      let passwordField = null;
+      
+      // First, wait for any input fields to appear (more lenient)
+      try {
+        await page.waitForSelector("input", { timeout: 10000 });
+      } catch (e) {
+        console.log("⚠️  No input fields found on page");
+      }
+      
+      const usernameSelectors = [
+        "#username",
+        "input[name='session_key']",
+        "input[id='username']",
+        "input[type='text'][autocomplete='username']",
+        "input[aria-label*='Email']",
+        "input[aria-label*='email']",
+        "input[aria-label*='Phone']",
+        "input[aria-label*='phone']",
+        "input[placeholder*='Email']",
+        "input[placeholder*='email']",
+      ];
+      
+      const passwordSelectors = [
+        "#password",
+        "input[name='session_password']",
+        "input[id='password']",
+        "input[type='password']",
+        "input[aria-label*='Password']",
+        "input[aria-label*='password']",
+        "input[placeholder*='Password']",
+        "input[placeholder*='password']",
+      ];
 
+      // Try to find username field with multiple strategies (faster approach)
+      for (const selector of usernameSelectors) {
+        try {
+          usernameField = await page.$(selector);
+          if (usernameField) {
+            console.log(`✅ Found username field with selector: ${selector}`);
+            break;
+          }
+        } catch (e) {
+          // Continue to next selector
+          continue;
+        }
+      }
+
+      // Try to find password field with multiple strategies
+      for (const selector of passwordSelectors) {
+        try {
+          passwordField = await page.$(selector);
+          if (passwordField) {
+            console.log(`✅ Found password field with selector: ${selector}`);
+            break;
+          }
+        } catch (e) {
+          // Continue to next selector
+          continue;
+        }
+      }
+
+      // If still not found, try evaluating in page context
+      if (!usernameField || !passwordField) {
+        console.log("⚠️  Fields not found with standard selectors, trying page evaluation...");
+        
+        const fields = await page.evaluate(() => {
+          const inputs = Array.from(document.querySelectorAll("input"));
+          const username = inputs.find(
+            (input) =>
+              input.type === "text" &&
+              (input.id === "username" ||
+                input.name === "session_key" ||
+                input.placeholder?.toLowerCase().includes("email") ||
+                input.ariaLabel?.toLowerCase().includes("email"))
+          );
+          const password = inputs.find(
+            (input) =>
+              input.type === "password" &&
+              (input.id === "password" ||
+                input.name === "session_password" ||
+                input.placeholder?.toLowerCase().includes("password") ||
+                input.ariaLabel?.toLowerCase().includes("password"))
+          );
+          return { username: username, password: password };
+        });
+
+        if (fields.username && fields.password) {
+          // Use evaluate to interact with fields
+          await page.evaluate(
+            (email, password) => {
+              const inputs = Array.from(document.querySelectorAll("input"));
+              const username = inputs.find(
+                (input) =>
+                  input.type === "text" &&
+                  (input.id === "username" ||
+                    input.name === "session_key" ||
+                    input.placeholder?.toLowerCase().includes("email"))
+              );
+              const pass = inputs.find(
+                (input) =>
+                  input.type === "password" &&
+                  (input.id === "password" ||
+                    input.name === "session_password" ||
+                    input.placeholder?.toLowerCase().includes("password"))
+              );
+              if (username) {
+                username.value = email;
+                username.dispatchEvent(new Event("input", { bubbles: true }));
+                username.dispatchEvent(new Event("change", { bubbles: true }));
+              }
+              if (pass) {
+                pass.value = password;
+                pass.dispatchEvent(new Event("input", { bubbles: true }));
+                pass.dispatchEvent(new Event("change", { bubbles: true }));
+              }
+            },
+            credentials.email,
+            credentials.password
+          );
+          await this.delay(1000);
+
+          // Find and click submit button
+          const submitClicked = await page.evaluate(() => {
+            const buttons = Array.from(
+              document.querySelectorAll("button[type='submit'], button.sign-in-form__submit-button")
+            );
+            for (const button of buttons) {
+              const text = button.textContent?.toLowerCase() || "";
+              if (
+                text.includes("sign in") ||
+                text.includes("signin") ||
+                button.type === "submit"
+              ) {
+                button.click();
+                return true;
+              }
+            }
+            return false;
+          });
+
+          if (submitClicked) {
+            console.log("✅ Login form submitted");
+            await this.delay(10000);
+
+            // Check if login was successful
+            const isLoggedIn = await page.evaluate(() => {
+              return (
+                document.querySelector(
+                  ".global-nav, .feed-identity-module, [data-control-name='nav.settings']"
+                ) !== null || !window.location.href.includes("/login")
+              );
+            });
+
+            if (isLoggedIn) {
+              console.log("✅ Successfully logged into LinkedIn");
+              await this.delay(3000);
+              return true;
+            }
+          }
+        }
+      }
+
+      // Standard approach if fields were found
       if (usernameField && passwordField) {
-        await usernameField.type(credentials.email, { delay: 100 });
-        await this.delay(500);
-        await passwordField.type(credentials.password, { delay: 100 });
-        await this.delay(500);
+        console.log("📝 Filling login form...");
+        
+        // Clear fields first
+        await usernameField.click({ clickCount: 3 });
+        await usernameField.type(credentials.email, { delay: 150 });
+        await this.delay(1000);
+        
+        await passwordField.click({ clickCount: 3 });
+        await passwordField.type(credentials.password, { delay: 150 });
+        await this.delay(1000);
 
-        const submitButton = await page.$("button[type='submit']");
+        // Find submit button with multiple strategies
+        let submitButton = await page.$("button[type='submit']");
+        if (!submitButton) {
+          submitButton = await page.$("button.sign-in-form__submit-button");
+        }
+        if (!submitButton) {
+          // Try to find by text
+          submitButton = await page.evaluateHandle(() => {
+            const buttons = Array.from(document.querySelectorAll("button"));
+            return buttons.find(
+              (btn) =>
+                btn.textContent?.toLowerCase().includes("sign in") ||
+                btn.type === "submit"
+            );
+          });
+        }
+
         if (submitButton) {
+          console.log("🔘 Clicking submit button...");
           await submitButton.click();
-
-          // Wait for navigation
-          await this.delay(8000);
+          await this.delay(10000);
 
           // Check if login was successful
           const isLoggedIn = await page.evaluate(() => {
-            return (
-              document.querySelector(".global-nav, .feed-identity-module") !==
-              null
+            const url = window.location.href;
+            const hasNav = document.querySelector(
+              ".global-nav, .feed-identity-module, [data-control-name='nav.settings']"
             );
+            return hasNav !== null || (!url.includes("/login") && !url.includes("/uas/login"));
           });
 
           if (isLoggedIn) {
             console.log("✅ Successfully logged into LinkedIn");
             await this.delay(3000);
             return true;
+          } else {
+            console.log("⚠️  Login may have failed or requires additional verification");
+            // Check for CAPTCHA or verification
+            const needsVerification = await page.evaluate(() => {
+              return (
+                document.body.textContent.includes("captcha") ||
+                document.body.textContent.includes("verify") ||
+                document.body.textContent.includes("security check")
+              );
+            });
+            if (needsVerification) {
+              console.log("⚠️  LinkedIn may require manual verification (CAPTCHA)");
+            }
           }
+        } else {
+          console.log("❌ Could not find submit button");
         }
+      } else {
+        console.log("❌ Could not find username or password fields");
+        console.log("💡 The page might require manual intervention or LinkedIn has changed their login page");
       }
 
       return false;
     } catch (error) {
       console.error("❌ Login failed:", error.message);
+      console.error("📍 Error details:", error.stack);
       return false;
     }
   }
