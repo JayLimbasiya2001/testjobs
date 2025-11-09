@@ -820,190 +820,6 @@ class LinkedInJobScraper {
   /**
    * Scrape individual job card - IMPROVED VERSION
    */
-  async scrapeJobCard(page, index, location, processedJobIds) {
-    try {
-      // Click on the job card to load details
-      const clicked = await page.evaluate((idx) => {
-        const cards = document.querySelectorAll(
-          ".jobs-search-results__list-item, .job-card-container, .scaffold-layout__list-item, [data-job-id]"
-        );
-
-        if (cards[idx]) {
-          cards[idx].scrollIntoView({ behavior: "smooth", block: "center" });
-
-          // Try clicking different elements within the card
-          const clickableElements = [
-            cards[idx].querySelector("a"),
-            cards[idx].querySelector(".job-card-list__title"),
-            cards[idx],
-          ];
-
-          for (const element of clickableElements) {
-            if (element) {
-              element.click();
-              return true;
-            }
-          }
-        }
-        return false;
-      }, index);
-
-      if (!clicked) {
-        return null;
-      }
-
-      await this.delay(4000); // Wait for job details to load
-
-      // Extract job details
-      const jobData = await page.evaluate((loc) => {
-        const data = {
-          location: loc,
-          scrapedAt: new Date().toISOString(),
-        };
-
-        // Job Title
-        const titleSelectors = [
-          ".job-details-jobs-unified-top-card__job-title",
-          ".jobs-unified-top-card__job-title",
-          "h1.t-24",
-          ".jobs-details-top-card__job-title",
-          "h2.t-20",
-        ];
-        for (const selector of titleSelectors) {
-          const element = document.querySelector(selector);
-          if (element && element.textContent.trim()) {
-            data.title = element.textContent.trim();
-            break;
-          }
-        }
-
-        // Company Name
-        const companySelectors = [
-          ".job-details-jobs-unified-top-card__company-name",
-          ".jobs-unified-top-card__company-name",
-          ".jobs-details-top-card__company-url",
-          "a.ember-view.t-black",
-          ".job-details-jobs-unified-top-card__primary-description a",
-        ];
-        for (const selector of companySelectors) {
-          const element = document.querySelector(selector);
-          if (element && element.textContent.trim()) {
-            data.company = element.textContent.trim();
-            break;
-          }
-        }
-
-        // Job Location
-        const locationSelectors = [
-          ".job-details-jobs-unified-top-card__bullet",
-          ".jobs-unified-top-card__bullet",
-          ".jobs-details-top-card__bullet",
-        ];
-        for (const selector of locationSelectors) {
-          const elements = document.querySelectorAll(selector);
-          for (const element of elements) {
-            const text = element.textContent.trim();
-            if (text && (text.includes(",") || text.includes("India"))) {
-              data.jobLocation = text;
-              break;
-            }
-          }
-          if (data.jobLocation) break;
-        }
-
-        // Workplace Type
-        const workplaceElement = document.querySelector(
-          ".jobs-unified-top-card__workplace-type"
-        );
-        if (workplaceElement) {
-          data.workplaceType = workplaceElement.textContent.trim();
-        }
-
-        // Posted Time
-        const postedSelectors = [
-          ".jobs-unified-top-card__posted-date",
-          ".job-details-jobs-unified-top-card__posted-date",
-          'span[class*="posted"]',
-        ];
-        for (const selector of postedSelectors) {
-          const element = document.querySelector(selector);
-          if (element) {
-            data.postedTime = element.textContent.trim();
-            break;
-          }
-        }
-
-        // Number of Applicants
-        const applicantsElement = document.querySelector(
-          ".jobs-unified-top-card__applicant-count, .num-applicants__caption"
-        );
-        if (applicantsElement) {
-          data.applicants = applicantsElement.textContent.trim();
-        }
-
-        // Job Description
-        const descriptionSelectors = [
-          ".jobs-description__content",
-          ".jobs-box__html-content",
-          "#job-details",
-          ".jobs-description-content__text",
-          ".jobs-description",
-        ];
-        for (const selector of descriptionSelectors) {
-          const element = document.querySelector(selector);
-          if (element) {
-            data.description = element.textContent.trim().substring(0, 3000);
-            break;
-          }
-        }
-
-        // Job ID and URL
-        const currentUrl = window.location.href;
-        const jobIdMatch =
-          currentUrl.match(/currentJobId=(\d+)/) ||
-          currentUrl.match(/jobs\/view\/(\d+)/);
-        if (jobIdMatch) {
-          data.jobId = jobIdMatch[1];
-          data.jobUrl = `https://www.linkedin.com/jobs/view/${jobIdMatch[1]}`;
-        }
-
-        // Seniority Level
-        const insightElements = document.querySelectorAll(
-          ".jobs-unified-top-card__job-insight"
-        );
-        if (insightElements.length > 0) {
-          data.seniorityLevel = insightElements[0]?.textContent.trim();
-        }
-        if (insightElements.length > 1) {
-          data.employmentType = insightElements[1]?.textContent.trim();
-        }
-
-        // Skills
-        const skillsElements = document.querySelectorAll(
-          ".job-details-skill-match-status-list__skill, .job-details-how-you-match__skills-item"
-        );
-        if (skillsElements.length > 0) {
-          data.skills = Array.from(skillsElements)
-            .map((el) => el.textContent.trim())
-            .filter((s) => s);
-        }
-
-        return data;
-      }, location);
-
-      // Validate and return job data
-      if (jobData.title && jobData.company && jobData.jobId) {
-        if (!processedJobIds.has(jobData.jobId)) {
-          return jobData;
-        }
-      }
-
-      return null;
-    } catch (error) {
-      console.error(`Error scraping job at index ${index}:`, error.message);
-      return null;
-    }
-  }
 
   /**
    * Check if job is Node.js related
@@ -1035,27 +851,219 @@ class LinkedInJobScraper {
   /**
    * Scroll job list to load more
    */
+  /**
+   * Search jobs for a specific location - IMPROVED for production
+   */
+  async searchJobsForLocation(page, location) {
+    try {
+      console.log(`🔍 Searching for jobs in ${location}...`);
+
+      // Use URL navigation directly (more reliable in production)
+      const searchUrl = this.buildSearchUrl(location);
+      console.log(`🔗 Navigating to: ${searchUrl}`);
+
+      await page.goto(searchUrl, {
+        waitUntil: "networkidle2",
+        timeout: 60000,
+      });
+
+      console.log("⏳ Waiting for search results to load...");
+      await this.delay(8000);
+
+      // Check if we're on the right page and content loaded
+      const pageStatus = await page.evaluate(() => {
+        const bodyText = document.body.textContent.toLowerCase();
+        return {
+          hasJobs: bodyText.includes("job") || bodyText.includes("apply"),
+          hasResults:
+            bodyText.includes("results") || bodyText.includes("found"),
+          hasNoResults:
+            bodyText.includes("no jobs found") ||
+            bodyText.includes("we couldn't find"),
+          currentUrl: window.location.href,
+          title: document.title,
+        };
+      });
+
+      console.log("📊 Page status:", pageStatus);
+
+      if (pageStatus.hasNoResults) {
+        console.log("⚠️ No jobs found for this search");
+        return;
+      }
+
+      // Apply filters with better waiting
+      await this.applyFilters(page);
+
+      // Additional wait after filters
+      await this.delay(5000);
+
+      // Get job list and scrape each job
+      let scrapedCount = 0;
+      let scrollAttempts = 0;
+      const maxScrollAttempts = 10; // Reduced for production
+      const processedJobIds = new Set();
+
+      while (
+        scrapedCount < this.maxJobsPerLocation &&
+        scrollAttempts < maxScrollAttempts
+      ) {
+        scrollAttempts++;
+        console.log(`\n🔄 Scroll attempt ${scrollAttempts} for ${location}...`);
+
+        // Get all job cards on current page with improved detection
+        const jobCards = await this.getJobCardsList(page);
+        console.log(`📋 Found ${jobCards.length} job cards on page`);
+
+        // If no cards found, try alternative approach
+        if (jobCards.length === 0 && scrollAttempts === 1) {
+          console.log(
+            "⚠️ No job cards found on first attempt. Trying alternative approach..."
+          );
+
+          // Try clicking on the first job-like element we can find
+          const clicked = await page.evaluate(() => {
+            const clickableElements = document.querySelectorAll(
+              'a, button, [role="button"], .job-card-list__title'
+            );
+
+            for (const element of clickableElements) {
+              const text = element.textContent || "";
+              if (
+                text.includes("Apply") ||
+                text.includes("View") ||
+                text.includes("job")
+              ) {
+                element.click();
+                return true;
+              }
+            }
+            return false;
+          });
+
+          if (clicked) {
+            await this.delay(3000);
+            // Try getting cards again
+            const jobCardsRetry = await this.getJobCardsList(page);
+            console.log(
+              `📋 Found ${jobCardsRetry.length} job cards after click`
+            );
+          }
+        }
+
+        // Scrape each job card
+        for (
+          let i = 0;
+          i < jobCards.length && scrapedCount < this.maxJobsPerLocation;
+          i++
+        ) {
+          try {
+            const jobData = await this.scrapeJobCard(
+              page,
+              i,
+              location,
+              processedJobIds
+            );
+
+            if (jobData && !processedJobIds.has(jobData.jobId)) {
+              processedJobIds.add(jobData.jobId);
+              this.allJobs.push(jobData);
+              scrapedCount++;
+
+              // Check if it's a Node.js job
+              if (this.isNodeJob(jobData)) {
+                this.nodeJobs.push(jobData);
+                console.log(
+                  `✅ [${scrapedCount}] Node.js Job: ${jobData.title} at ${jobData.company}`
+                );
+              } else {
+                console.log(
+                  `📝 [${scrapedCount}] Job: ${jobData.title} at ${jobData.company}`
+                );
+              }
+            }
+
+            await this.delay(this.delayBetweenJobs);
+          } catch (error) {
+            console.error(`Error scraping job ${i}:`, error.message);
+          }
+        }
+
+        // Scroll to load more jobs
+        const hasMore = await this.scrollJobList(page);
+
+        if (!hasMore || jobCards.length === 0) {
+          console.log("🚫 No more jobs to load or no jobs found");
+          break;
+        }
+
+        await this.delay(3000);
+      }
+
+      console.log(`\n✅ Completed ${location}: ${scrapedCount} jobs scraped`);
+    } catch (error) {
+      console.error(`Error searching jobs in ${location}:`, error.message);
+    }
+  }
+
+  /**
+   * Scroll job list to load more - IMPROVED
+   */
   async scrollJobList(page) {
-    return await page.evaluate(async () => {
-      const jobList = document.querySelector(
-        ".jobs-search-results-list, .scaffold-layout__list, .scaffold-layout__list-container"
-      );
+    try {
+      return await page.evaluate(async () => {
+        // Multiple selectors for job list container
+        const jobListSelectors = [
+          ".jobs-search-results-list",
+          ".scaffold-layout__list",
+          ".scaffold-layout__list-container",
+          ".jobs-search-results",
+          "[role='list']",
+          ".scaffold-layout__main",
+        ];
 
-      if (!jobList) return false;
+        let jobList = null;
+        for (const selector of jobListSelectors) {
+          jobList = document.querySelector(selector);
+          if (jobList) break;
+        }
 
-      const beforeHeight = jobList.scrollHeight;
-      const beforeScroll = jobList.scrollTop;
+        if (!jobList) {
+          console.log("❌ No job list container found");
+          return false;
+        }
 
-      jobList.scrollTo(0, jobList.scrollHeight);
+        const beforeHeight =
+          jobList.scrollHeight || document.documentElement.scrollHeight;
+        const beforeScroll = jobList.scrollTop || window.scrollY;
 
-      // Wait for new content
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+        // Scroll the page or container
+        if (jobList.scrollHeight > jobList.clientHeight) {
+          jobList.scrollTo(0, jobList.scrollHeight);
+        } else {
+          window.scrollTo(0, document.body.scrollHeight);
+        }
 
-      const afterHeight = jobList.scrollHeight;
-      const afterScroll = jobList.scrollTop;
+        // Wait for new content
+        await new Promise((resolve) => setTimeout(resolve, 3000));
 
-      return afterHeight > beforeHeight || afterScroll > beforeScroll;
-    });
+        const afterHeight =
+          jobList.scrollHeight || document.documentElement.scrollHeight;
+        const afterScroll = jobList.scrollTop || window.scrollY;
+
+        const hasNewContent =
+          afterHeight > beforeHeight || afterScroll > beforeScroll;
+
+        if (!hasNewContent) {
+          console.log("📏 No new content after scrolling");
+        }
+
+        return hasNewContent;
+      });
+    } catch (error) {
+      console.error("Error scrolling job list:", error.message);
+      return false;
+    }
   }
 
   /**
