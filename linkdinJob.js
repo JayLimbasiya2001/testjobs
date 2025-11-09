@@ -920,15 +920,8 @@ class LinkedInJobScraper {
         console.log("⚠️  Job list container not found with standard selectors");
       }
 
-      // Wait for network to be idle (jobs loading)
-      try {
-        await page.waitForLoadState?.("networkidle", { timeout: 15000 }).catch(() => {});
-      } catch (e) {
-        // waitForLoadState might not be available in all puppeteer versions
-      }
-
-      // Additional wait for dynamic content
-      await this.delay(5000);
+      // Additional wait for dynamic content and network activity
+      await this.delay(8000);
 
       // Scroll to trigger lazy loading
       await page.evaluate(() => {
