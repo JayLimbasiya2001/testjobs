@@ -63,43 +63,26 @@ class LinkedInJobScraper {
   /**
    * Launch browser with Vercel compatibility
    */
-  /**
-   * Launch browser with Vercel compatibility - IMPROVED
-   */
   async launchBrowser() {
     if (this.isProduction && puppeteerCore && chromium) {
       // Production/Vercel: Use puppeteer-core with chromium-min
       console.log("🚀 Launching browser for production (Vercel)...");
 
-      try {
-        const executablePath = await chromium.executablePath(
-          "https://github.com/Sparticuz/chromium/releases/download/v131.0.1/chromium-v131.0.1-pack.tar"
-        );
+      const executablePath = await chromium.executablePath(
+        "https://github.com/Sparticuz/chromium/releases/download/v131.0.1/chromium-v131.0.1-pack.tar"
+      );
 
-        return await puppeteerCore.launch({
-          executablePath,
-          args: [
-            ...chromium.args,
-            "--no-sandbox",
-            "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage",
-            "--disable-accelerated-2d-canvas",
-            "--disable-gpu",
-            "--window-size=1400,1000",
-          ],
-          headless: chromium.headless,
-          defaultViewport: chromium.defaultViewport,
-          ignoreHTTPSErrors: true,
-        });
-      } catch (error) {
-        console.error("❌ Chromium launch failed:", error.message);
-        throw error;
-      }
+      return await puppeteerCore.launch({
+        executablePath,
+        args: chromium.args,
+        headless: chromium.headless,
+        defaultViewport: chromium.defaultViewport,
+      });
     } else if (puppeteer) {
       // Development: Use regular puppeteer
       console.log("🚀 Launching browser for development...");
       return await puppeteer.launch({
-        headless: false, // Keep false for debugging
+        headless: false,
         args: [
           "--no-sandbox",
           "--disable-setuid-sandbox",
@@ -112,14 +95,17 @@ class LinkedInJobScraper {
       });
     } else if (puppeteerCore) {
       // Fallback: Use puppeteer-core without chromium
-      console.log("⚠️ Using puppeteer-core without chromium");
+      console.log(
+        "⚠️ Using puppeteer-core without chromium (may need executablePath)"
+      );
       return await puppeteerCore.launch({
         headless: true,
         args: [
           "--no-sandbox",
           "--disable-setuid-sandbox",
-          "--disable-dev-shm-usage",
+          "--disable-blink-features=AutomationControlled",
           "--window-size=1400,1000",
+          "--disable-dev-shm-usage",
         ],
       });
     } else {
@@ -128,6 +114,7 @@ class LinkedInJobScraper {
       );
     }
   }
+
   /**
    * Main function to scrape jobs
    */
@@ -450,13 +437,12 @@ class LinkedInJobScraper {
   }
 
   /**
-   * Search jobs for a specific location - IMPROVED VERSION
+   * Search jobs for a specific location
    */
   async searchJobsForLocation(page, location) {
     try {
       console.log(`🔍 Searching for jobs in ${location}...`);
 
-      // Use the better search method from the second file
       const searchSuccess = await this.performSearch(page, location);
 
       if (!searchSuccess) {
@@ -464,10 +450,15 @@ class LinkedInJobScraper {
         return;
       }
 
+      // Wait for search results to load with better wait strategy
+      console.log("⏳ Waiting for search results to load...");
       await this.delay(5000);
 
       // Apply filters
       await this.applyFilters(page);
+
+      // Additional wait after filters
+      await this.delay(3000);
 
       // Get job list and scrape each job
       let scrapedCount = 0;
@@ -482,9 +473,14 @@ class LinkedInJobScraper {
         scrollAttempts++;
         console.log(`\n🔄 Scroll attempt ${scrollAttempts} for ${location}...`);
 
-        // Get all job cards on current page - IMPROVED METHOD
+        // Get all job cards on current page using improved detection
         const jobCards = await this.getJobCardsList(page);
         console.log(`📋 Found ${jobCards.length} job cards on page`);
+
+        if (jobCards.length === 0) {
+          console.log("⚠️  No job cards found, breaking...");
+          break;
+        }
 
         // Scrape each job card
         for (
@@ -542,11 +538,11 @@ class LinkedInJobScraper {
   }
 
   /**
-   * Perform search using the search form - IMPROVED VERSION
+   * Perform search using the search form (improved from working file)
    */
   async performSearch(page, location) {
     try {
-      // Method 1: Use search inputs on the page (from working file)
+      // Method 1: Use search inputs on the page
       const searchSuccess = await page.evaluate(
         (query, loc) => {
           // Find keyword search box
@@ -603,7 +599,7 @@ class LinkedInJobScraper {
         return true;
       }
 
-      // Method 2: If form method fails, try URL approach with better error handling
+      // Method 2: If form method fails, try URL approach
       console.log("⚠️ Form method failed, trying URL navigation...");
       const searchUrl = this.buildSearchUrl(location);
 
@@ -658,7 +654,7 @@ class LinkedInJobScraper {
   }
 
   /**
-   * Apply additional filters on the page - IMPROVED VERSION
+   * Apply additional filters on the page
    */
   async applyFilters(page) {
     try {
@@ -705,36 +701,6 @@ class LinkedInJobScraper {
         console.log("✅ Experience level filters applied");
       }
 
-      // Apply Workplace Type filter
-      const wpFilterApplied = await page.evaluate((types) => {
-        const wpButtons = document.querySelectorAll(
-          'button[aria-label*="Workplace type"], button[aria-label*="Workplace Type"]'
-        );
-        for (const button of wpButtons) {
-          button.click();
-          return true;
-        }
-        return false;
-      });
-      if (wpFilterApplied) {
-        await this.delay(2000);
-        // Select On-site, Remote, Hybrid
-        await page.evaluate((types) => {
-          const checkboxes = document.querySelectorAll(
-            'input[type="checkbox"]'
-          );
-          for (const checkbox of checkboxes) {
-            const label =
-              checkbox.closest("label")?.textContent?.toLowerCase() || "";
-            if (types.includes(label)) {
-              checkbox.click();
-            }
-          }
-        }, this.workplaceTypes);
-        await this.delay(2000);
-        console.log("✅ Workplace type filters applied");
-      }
-
       // Apply Date Posted filter
       const dateFilterApplied = await page.evaluate(() => {
         const dateButtons = document.querySelectorAll(
@@ -766,38 +732,6 @@ class LinkedInJobScraper {
         console.log("✅ Date posted filter applied");
       }
 
-      // Apply Most Recent sort
-      const sortApplied = await page.evaluate(() => {
-        const sortButtons = document.querySelectorAll(
-          'button[aria-label*="Sort by"], select'
-        );
-        for (const button of sortButtons) {
-          const text = button.textContent?.toLowerCase() || "";
-          if (text.includes("sort") || text.includes("most recent")) {
-            button.click();
-            return true;
-          }
-        }
-        return false;
-      });
-
-      if (sortApplied) {
-        await this.delay(2000);
-
-        await page.evaluate(() => {
-          const options = document.querySelectorAll("li, option");
-          for (const option of options) {
-            const text = option.textContent?.toLowerCase() || "";
-            if (text.includes("most recent") || text.includes("date")) {
-              option.click();
-              break;
-            }
-          }
-        });
-
-        console.log("✅ Sort by Most Recent applied");
-      }
-
       await this.delay(3000);
       console.log("✅ All filters applied");
     } catch (error) {
@@ -806,7 +740,7 @@ class LinkedInJobScraper {
   }
 
   /**
-   * Get list of job cards - IMPROVED VERSION
+   * Get list of job cards (improved from working file)
    */
   async getJobCardsList(page) {
     return await page.evaluate(() => {
@@ -818,8 +752,192 @@ class LinkedInJobScraper {
   }
 
   /**
-   * Scrape individual job card - IMPROVED VERSION
+   * Scrape individual job card (improved from working file)
    */
+  async scrapeJobCard(page, index, location, processedJobIds) {
+    try {
+      // Click on the job card to load details
+      const clicked = await page.evaluate((idx) => {
+        const cards = document.querySelectorAll(
+          ".jobs-search-results__list-item, .job-card-container, .scaffold-layout__list-item, [data-job-id]"
+        );
+
+        if (cards[idx]) {
+          cards[idx].scrollIntoView({ behavior: "smooth", block: "center" });
+
+          // Try clicking different elements within the card
+          const clickableElements = [
+            cards[idx].querySelector("a"),
+            cards[idx].querySelector(".job-card-list__title"),
+            cards[idx],
+          ];
+
+          for (const element of clickableElements) {
+            if (element) {
+              element.click();
+              return true;
+            }
+          }
+        }
+        return false;
+      }, index);
+
+      if (!clicked) {
+        return null;
+      }
+
+      await this.delay(4000); // Wait for job details to load
+
+      // Extract job details
+      const jobData = await page.evaluate((loc) => {
+        const data = {
+          location: loc,
+          scrapedAt: new Date().toISOString(),
+        };
+
+        // Job Title
+        const titleSelectors = [
+          ".job-details-jobs-unified-top-card__job-title",
+          ".jobs-unified-top-card__job-title",
+          "h1.t-24",
+          ".jobs-details-top-card__job-title",
+          "h2.t-20",
+        ];
+        for (const selector of titleSelectors) {
+          const element = document.querySelector(selector);
+          if (element && element.textContent.trim()) {
+            data.title = element.textContent.trim();
+            break;
+          }
+        }
+
+        // Company Name
+        const companySelectors = [
+          ".job-details-jobs-unified-top-card__company-name",
+          ".jobs-unified-top-card__company-name",
+          ".jobs-details-top-card__company-url",
+          "a.ember-view.t-black",
+          ".job-details-jobs-unified-top-card__primary-description a",
+        ];
+        for (const selector of companySelectors) {
+          const element = document.querySelector(selector);
+          if (element && element.textContent.trim()) {
+            data.company = element.textContent.trim();
+            break;
+          }
+        }
+
+        // Job Location
+        const locationSelectors = [
+          ".job-details-jobs-unified-top-card__bullet",
+          ".jobs-unified-top-card__bullet",
+          ".jobs-details-top-card__bullet",
+        ];
+        for (const selector of locationSelectors) {
+          const elements = document.querySelectorAll(selector);
+          for (const element of elements) {
+            const text = element.textContent.trim();
+            if (text && (text.includes(",") || text.includes("India"))) {
+              data.jobLocation = text;
+              break;
+            }
+          }
+          if (data.jobLocation) break;
+        }
+
+        // Workplace Type
+        const workplaceElement = document.querySelector(
+          ".jobs-unified-top-card__workplace-type"
+        );
+        if (workplaceElement) {
+          data.workplaceType = workplaceElement.textContent.trim();
+        }
+
+        // Posted Time
+        const postedSelectors = [
+          ".jobs-unified-top-card__posted-date",
+          ".job-details-jobs-unified-top-card__posted-date",
+          'span[class*="posted"]',
+        ];
+        for (const selector of postedSelectors) {
+          const element = document.querySelector(selector);
+          if (element) {
+            data.postedTime = element.textContent.trim();
+            break;
+          }
+        }
+
+        // Number of Applicants
+        const applicantsElement = document.querySelector(
+          ".jobs-unified-top-card__applicant-count, .num-applicants__caption"
+        );
+        if (applicantsElement) {
+          data.applicants = applicantsElement.textContent.trim();
+        }
+
+        // Job Description
+        const descriptionSelectors = [
+          ".jobs-description__content",
+          ".jobs-box__html-content",
+          "#job-details",
+          ".jobs-description-content__text",
+          ".jobs-description",
+        ];
+        for (const selector of descriptionSelectors) {
+          const element = document.querySelector(selector);
+          if (element) {
+            data.description = element.textContent.trim().substring(0, 3000);
+            break;
+          }
+        }
+
+        // Job ID and URL
+        const currentUrl = window.location.href;
+        const jobIdMatch =
+          currentUrl.match(/currentJobId=(\d+)/) ||
+          currentUrl.match(/jobs\/view\/(\d+)/);
+        if (jobIdMatch) {
+          data.jobId = jobIdMatch[1];
+          data.jobUrl = `https://www.linkedin.com/jobs/view/${jobIdMatch[1]}`;
+        }
+
+        // Seniority Level
+        const insightElements = document.querySelectorAll(
+          ".jobs-unified-top-card__job-insight"
+        );
+        if (insightElements.length > 0) {
+          data.seniorityLevel = insightElements[0]?.textContent.trim();
+        }
+        if (insightElements.length > 1) {
+          data.employmentType = insightElements[1]?.textContent.trim();
+        }
+
+        // Skills
+        const skillsElements = document.querySelectorAll(
+          ".job-details-skill-match-status-list__skill, .job-details-how-you-match__skills-item"
+        );
+        if (skillsElements.length > 0) {
+          data.skills = Array.from(skillsElements)
+            .map((el) => el.textContent.trim())
+            .filter((s) => s);
+        }
+
+        return data;
+      }, location);
+
+      // Validate and return job data
+      if (jobData.title && jobData.company && jobData.jobId) {
+        if (!processedJobIds.has(jobData.jobId)) {
+          return jobData;
+        }
+      }
+
+      return null;
+    } catch (error) {
+      console.error(`Error scraping job at index ${index}:`, error.message);
+      return null;
+    }
+  }
 
   /**
    * Check if job is Node.js related
@@ -851,226 +969,31 @@ class LinkedInJobScraper {
   /**
    * Scroll job list to load more
    */
-  /**
-   * Search jobs for a specific location - IMPROVED for production
-   */
-  async searchJobsForLocation(page, location) {
-    try {
-      console.log(`🔍 Searching for jobs in ${location}...`);
-
-      // Use URL navigation directly (more reliable in production)
-      const searchUrl = this.buildSearchUrl(location);
-      console.log(`🔗 Navigating to: ${searchUrl}`);
-
-      await page.goto(searchUrl, {
-        waitUntil: "networkidle2",
-        timeout: 60000,
-      });
-
-      console.log("⏳ Waiting for search results to load...");
-      await this.delay(8000);
-
-      // Check if we're on the right page and content loaded
-      const pageStatus = await page.evaluate(() => {
-        const bodyText = document.body.textContent.toLowerCase();
-        return {
-          hasJobs: bodyText.includes("job") || bodyText.includes("apply"),
-          hasResults:
-            bodyText.includes("results") || bodyText.includes("found"),
-          hasNoResults:
-            bodyText.includes("no jobs found") ||
-            bodyText.includes("we couldn't find"),
-          currentUrl: window.location.href,
-          title: document.title,
-        };
-      });
-
-      console.log("📊 Page status:", pageStatus);
-
-      if (pageStatus.hasNoResults) {
-        console.log("⚠️ No jobs found for this search");
-        return;
-      }
-
-      // Apply filters with better waiting
-      await this.applyFilters(page);
-
-      // Additional wait after filters
-      await this.delay(5000);
-
-      // Get job list and scrape each job
-      let scrapedCount = 0;
-      let scrollAttempts = 0;
-      const maxScrollAttempts = 10; // Reduced for production
-      const processedJobIds = new Set();
-
-      while (
-        scrapedCount < this.maxJobsPerLocation &&
-        scrollAttempts < maxScrollAttempts
-      ) {
-        scrollAttempts++;
-        console.log(`\n🔄 Scroll attempt ${scrollAttempts} for ${location}...`);
-
-        // Get all job cards on current page with improved detection
-        const jobCards = await this.getJobCardsList(page);
-        console.log(`📋 Found ${jobCards.length} job cards on page`);
-
-        // If no cards found, try alternative approach
-        if (jobCards.length === 0 && scrollAttempts === 1) {
-          console.log(
-            "⚠️ No job cards found on first attempt. Trying alternative approach..."
-          );
-
-          // Try clicking on the first job-like element we can find
-          const clicked = await page.evaluate(() => {
-            const clickableElements = document.querySelectorAll(
-              'a, button, [role="button"], .job-card-list__title'
-            );
-
-            for (const element of clickableElements) {
-              const text = element.textContent || "";
-              if (
-                text.includes("Apply") ||
-                text.includes("View") ||
-                text.includes("job")
-              ) {
-                element.click();
-                return true;
-              }
-            }
-            return false;
-          });
-
-          if (clicked) {
-            await this.delay(3000);
-            // Try getting cards again
-            const jobCardsRetry = await this.getJobCardsList(page);
-            console.log(
-              `📋 Found ${jobCardsRetry.length} job cards after click`
-            );
-          }
-        }
-
-        // Scrape each job card
-        for (
-          let i = 0;
-          i < jobCards.length && scrapedCount < this.maxJobsPerLocation;
-          i++
-        ) {
-          try {
-            const jobData = await this.scrapeJobCard(
-              page,
-              i,
-              location,
-              processedJobIds
-            );
-
-            if (jobData && !processedJobIds.has(jobData.jobId)) {
-              processedJobIds.add(jobData.jobId);
-              this.allJobs.push(jobData);
-              scrapedCount++;
-
-              // Check if it's a Node.js job
-              if (this.isNodeJob(jobData)) {
-                this.nodeJobs.push(jobData);
-                console.log(
-                  `✅ [${scrapedCount}] Node.js Job: ${jobData.title} at ${jobData.company}`
-                );
-              } else {
-                console.log(
-                  `📝 [${scrapedCount}] Job: ${jobData.title} at ${jobData.company}`
-                );
-              }
-            }
-
-            await this.delay(this.delayBetweenJobs);
-          } catch (error) {
-            console.error(`Error scraping job ${i}:`, error.message);
-          }
-        }
-
-        // Scroll to load more jobs
-        const hasMore = await this.scrollJobList(page);
-
-        if (!hasMore || jobCards.length === 0) {
-          console.log("🚫 No more jobs to load or no jobs found");
-          break;
-        }
-
-        await this.delay(3000);
-      }
-
-      console.log(`\n✅ Completed ${location}: ${scrapedCount} jobs scraped`);
-    } catch (error) {
-      console.error(`Error searching jobs in ${location}:`, error.message);
-    }
-  }
-
-  /**
-   * Scroll job list to load more - IMPROVED
-   */
   async scrollJobList(page) {
-    try {
-      return await page.evaluate(async () => {
-        // Multiple selectors for job list container
-        const jobListSelectors = [
-          ".jobs-search-results-list",
-          ".scaffold-layout__list",
-          ".scaffold-layout__list-container",
-          ".jobs-search-results",
-          "[role='list']",
-          ".scaffold-layout__main",
-        ];
+    return await page.evaluate(async () => {
+      const jobList = document.querySelector(
+        ".jobs-search-results-list, .scaffold-layout__list, .scaffold-layout__list-container"
+      );
 
-        let jobList = null;
-        for (const selector of jobListSelectors) {
-          jobList = document.querySelector(selector);
-          if (jobList) break;
-        }
+      if (!jobList) return false;
 
-        if (!jobList) {
-          console.log("❌ No job list container found");
-          return false;
-        }
+      const beforeHeight = jobList.scrollHeight;
+      const beforeScroll = jobList.scrollTop;
 
-        const beforeHeight =
-          jobList.scrollHeight || document.documentElement.scrollHeight;
-        const beforeScroll = jobList.scrollTop || window.scrollY;
+      jobList.scrollTo(0, jobList.scrollHeight);
 
-        // Scroll the page or container
-        if (jobList.scrollHeight > jobList.clientHeight) {
-          jobList.scrollTo(0, jobList.scrollHeight);
-        } else {
-          window.scrollTo(0, document.body.scrollHeight);
-        }
+      // Wait for new content
+      await new Promise((resolve) => setTimeout(resolve, 3000));
 
-        // Wait for new content
-        await new Promise((resolve) => setTimeout(resolve, 3000));
+      const afterHeight = jobList.scrollHeight;
+      const afterScroll = jobList.scrollTop;
 
-        const afterHeight =
-          jobList.scrollHeight || document.documentElement.scrollHeight;
-        const afterScroll = jobList.scrollTop || window.scrollY;
-
-        const hasNewContent =
-          afterHeight > beforeHeight || afterScroll > beforeScroll;
-
-        if (!hasNewContent) {
-          console.log("📏 No new content after scrolling");
-        }
-
-        return hasNewContent;
-      });
-    } catch (error) {
-      console.error("Error scrolling job list:", error.message);
-      return false;
-    }
+      return afterHeight > beforeHeight || afterScroll > beforeScroll;
+    });
   }
 
   /**
-   * LinkedIn login - IMPROVED VERSION
-   */
-  /**
-   * LinkedIn login - IMPROVED VERSION for production
+   * LinkedIn login
    */
   async linkedinLogin(page) {
     try {
@@ -1086,317 +1009,61 @@ class LinkedInJobScraper {
 
       console.log("🌐 Navigating to LinkedIn login page...");
 
-      // Navigate to login page with better wait strategy
       await page.goto(`${this.baseURL}/login`, {
-        waitUntil: "networkidle2",
-        timeout: 60000,
+        waitUntil: "domcontentloaded",
+        timeout: 30000,
       });
 
-      console.log("⏳ Waiting for page to fully load...");
-      await this.delay(5000);
+      await this.delay(3000);
 
-      // Check if already logged in
-      const currentUrl = page.url();
-      if (
-        !currentUrl.includes("/login") &&
-        !currentUrl.includes("/uas/login")
-      ) {
-        console.log("✅ Already logged in to LinkedIn");
-        return true;
-      }
+      // Wait for login form
+      await page.waitForSelector("#username, [name='session_key']", {
+        timeout: 15000,
+      });
 
-      console.log("🔍 Looking for login form fields...");
+      const usernameField =
+        (await page.$("#username")) || (await page.$("[name='session_key']"));
+      const passwordField =
+        (await page.$("#password")) ||
+        (await page.$("[name='session_password']"));
 
-      // Multiple strategies to find login fields
-      const usernameSelectors = [
-        "#username",
-        "input[name='session_key']",
-        "input[type='text'][autocomplete='username']",
-        "input[autocomplete='username']",
-        "input[id*='username']",
-        "input[name*='username']",
-        "input[type='email']",
-      ];
-
-      const passwordSelectors = [
-        "#password",
-        "input[name='session_password']",
-        "input[type='password']",
-        "input[autocomplete='current-password']",
-      ];
-
-      let usernameField = null;
-      let passwordField = null;
-
-      // Strategy 1: Try each selector individually
-      for (const selector of usernameSelectors) {
-        try {
-          usernameField = await page.$(selector);
-          if (usernameField) {
-            console.log(`✅ Found username field with: ${selector}`);
-            break;
-          }
-        } catch (e) {
-          continue;
-        }
-      }
-
-      for (const selector of passwordSelectors) {
-        try {
-          passwordField = await page.$(selector);
-          if (passwordField) {
-            console.log(`✅ Found password field with: ${selector}`);
-            break;
-          }
-        } catch (e) {
-          continue;
-        }
-      }
-
-      // Strategy 2: If selectors didn't work, try finding by form context
-      if (!usernameField || !passwordField) {
-        console.log("⚠️ Standard selectors failed, trying form context...");
-
-        const fields = await page.evaluate(() => {
-          const inputs = Array.from(document.querySelectorAll("input"));
-          let username = null;
-          let password = null;
-
-          for (const input of inputs) {
-            const type = input.type.toLowerCase();
-            const name = (input.name || "").toLowerCase();
-            const id = (input.id || "").toLowerCase();
-            const placeholder = (input.placeholder || "").toLowerCase();
-
-            // Check for username/email field
-            if (
-              type === "text" ||
-              type === "email" ||
-              name.includes("session_key") ||
-              name.includes("username") ||
-              name.includes("email") ||
-              id.includes("username") ||
-              id.includes("email") ||
-              placeholder.includes("email") ||
-              placeholder.includes("phone")
-            ) {
-              username = input;
-            }
-
-            // Check for password field
-            if (
-              type === "password" ||
-              name.includes("session_password") ||
-              name.includes("password") ||
-              id.includes("password") ||
-              placeholder.includes("password")
-            ) {
-              password = input;
-            }
-          }
-
-          return {
-            username: username ? true : false,
-            password: password ? true : false,
-          };
-        });
-
-        if (fields.username && fields.password) {
-          console.log("✅ Found fields using form context analysis");
-          // Use page.evaluate to fill the form
-          await page.evaluate(
-            (email, password) => {
-              const inputs = Array.from(document.querySelectorAll("input"));
-              let usernameField = null;
-              let passwordField = null;
-
-              for (const input of inputs) {
-                const type = input.type.toLowerCase();
-                const name = (input.name || "").toLowerCase();
-
-                if (
-                  type === "text" ||
-                  type === "email" ||
-                  name.includes("session_key") ||
-                  name.includes("username")
-                ) {
-                  usernameField = input;
-                }
-
-                if (type === "password" || name.includes("session_password")) {
-                  passwordField = input;
-                }
-              }
-
-              if (usernameField) {
-                usernameField.value = email;
-                usernameField.dispatchEvent(
-                  new Event("input", { bubbles: true })
-                );
-                usernameField.dispatchEvent(
-                  new Event("change", { bubbles: true })
-                );
-              }
-
-              if (passwordField) {
-                passwordField.value = password;
-                passwordField.dispatchEvent(
-                  new Event("input", { bubbles: true })
-                );
-                passwordField.dispatchEvent(
-                  new Event("change", { bubbles: true })
-                );
-              }
-            },
-            credentials.email,
-            credentials.password
-          );
-
-          await this.delay(1000);
-        }
-      } else {
-        // Strategy 3: Use the found fields normally
+      if (usernameField && passwordField) {
         console.log("📝 Filling login form...");
 
-        await usernameField.click({ clickCount: 3 });
         await usernameField.type(credentials.email, { delay: 100 });
-        await this.delay(1000);
-
-        await passwordField.click({ clickCount: 3 });
+        await this.delay(500);
         await passwordField.type(credentials.password, { delay: 100 });
-        await this.delay(1000);
-      }
+        await this.delay(500);
 
-      // Find and click submit button with multiple strategies
-      console.log("🔘 Looking for submit button...");
-
-      let submitButton = null;
-      const submitSelectors = [
-        "button[type='submit']",
-        "button.sign-in-form__submit-button",
-        "input[type='submit']",
-        "button[data-tracking-control-name='homepage-basic_signin-form_submit-button']",
-      ];
-
-      for (const selector of submitSelectors) {
-        submitButton = await page.$(selector);
+        const submitButton = await page.$("button[type='submit']");
         if (submitButton) {
-          console.log(`✅ Found submit button with: ${selector}`);
-          break;
-        }
-      }
+          console.log("🔘 Clicking submit button...");
+          await submitButton.click();
 
-      // If no button found by selector, try to find by text
-      if (!submitButton) {
-        submitButton = await page
-          .evaluateHandle(() => {
-            const buttons = Array.from(document.querySelectorAll("button"));
-            return buttons.find((btn) => {
-              const text = (btn.textContent || "").toLowerCase();
-              return (
-                text.includes("sign in") ||
-                text.includes("signin") ||
-                btn.type === "submit"
-              );
-            });
-          })
-          .catch(() => null);
-      }
+          // Wait for navigation
+          await this.delay(8000);
 
-      if (submitButton) {
-        console.log("🔘 Clicking submit button...");
-        await submitButton.click();
-
-        // Wait for login to complete with multiple checks
-        console.log("⏳ Waiting for login to complete...");
-        await this.delay(8000);
-
-        // Check if login was successful with multiple methods
-        const isLoggedIn = await page.evaluate(() => {
-          // Method 1: Check for navigation elements
-          const hasNav = document.querySelector(
-            '.global-nav, .feed-identity-module, [data-control-name="nav.settings"]'
-          );
-
-          // Method 2: Check URL
-          const url = window.location.href;
-          const isNotLoginPage =
-            !url.includes("/login") && !url.includes("/uas/login");
-
-          // Method 3: Check for feed content
-          const hasFeed = document.querySelector(
-            ".scaffold-layout, .feed-shared-update-v2"
-          );
-
-          return hasNav || isNotLoginPage || hasFeed;
-        });
-
-        if (isLoggedIn) {
-          console.log("✅ Successfully logged into LinkedIn");
-          await this.delay(3000);
-          return true;
-        } else {
-          console.log(
-            "⚠️ Login may have failed or requires additional verification"
-          );
-
-          // Check for security challenges
-          const hasChallenge = await page.evaluate(() => {
-            const bodyText = document.body.textContent.toLowerCase();
+          // Check if login was successful
+          const isLoggedIn = await page.evaluate(() => {
             return (
-              bodyText.includes("captcha") ||
-              bodyText.includes("verify") ||
-              bodyText.includes("security check") ||
-              bodyText.includes("challenge")
+              document.querySelector(".global-nav, .feed-identity-module") !==
+              null
             );
           });
 
-          if (hasChallenge) {
-            console.log(
-              "🔐 LinkedIn requires manual verification (CAPTCHA/2FA)"
-            );
-            console.log(
-              "💡 You may need to manually complete the security check"
-            );
-          }
-
-          // Take screenshot for debugging
-          try {
-            if (this.isProduction) {
-              console.log("📸 Login page screenshot saved for debugging");
-              // In production, we can't save files but we can log the page content
-              const pageContent = await page.content();
-              console.log(
-                "📄 Page content snippet:",
-                pageContent.substring(0, 500)
-              );
-            }
-          } catch (e) {
-            console.log("⚠️ Could not capture page content");
+          if (isLoggedIn) {
+            console.log("✅ Successfully logged into LinkedIn");
+            await this.delay(3000);
+            return true;
+          } else {
+            console.log("⚠️  Login may have failed or requires verification");
           }
         }
-      } else {
-        console.log("❌ Could not find submit button");
       }
 
       return false;
     } catch (error) {
       console.error("❌ Login failed:", error.message);
-
-      // Additional debug info for production
-      if (this.isProduction) {
-        console.log("🔧 Production debug info:");
-        console.log("- Current URL:", await page.url());
-        console.log("- Page title:", await page.title());
-
-        try {
-          const pageText = await page.evaluate(() => document.body.textContent);
-          console.log("- Page text snippet:", pageText.substring(0, 200));
-        } catch (e) {
-          console.log("- Could not extract page text");
-        }
-      }
-
       return false;
     }
   }
@@ -1404,35 +1071,14 @@ class LinkedInJobScraper {
   /**
    * Set stealth mode
    */
-  /**
-   * Set stealth mode - IMPROVED
-   */
   async setStealthMode(page) {
     await page.setViewport({ width: 1400, height: 1000 });
 
-    // Randomize user agent
-    const userAgents = [
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    ];
-
-    const randomUserAgent =
-      userAgents[Math.floor(Math.random() * userAgents.length)];
-    await page.setUserAgent(randomUserAgent);
-
     await page.evaluateOnNewDocument(() => {
-      // Override webdriver property
-      Object.defineProperty(navigator, "webdriver", {
-        get: () => undefined,
-      });
-
-      // Override plugins
+      Object.defineProperty(navigator, "webdriver", { get: () => undefined });
       Object.defineProperty(navigator, "plugins", {
         get: () => [1, 2, 3, 4, 5],
       });
-
-      // Override languages
       Object.defineProperty(navigator, "languages", {
         get: () => ["en-US", "en"],
       });
@@ -1443,26 +1089,15 @@ class LinkedInJobScraper {
         parameters.name === "notifications"
           ? Promise.resolve({ state: Notification.permission })
           : originalQuery(parameters);
-
-      // Mock Chrome runtime
-      window.chrome = {
-        runtime: {},
-      };
     });
+
+    await page.setUserAgent(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    );
 
     await page.setExtraHTTPHeaders({
       "Accept-Language": "en-US,en;q=0.9",
       "Accept-Encoding": "gzip, deflate, br",
-    });
-
-    // Block images and stylesheets to speed up loading
-    await page.setRequestInterception(true);
-    page.on("request", (req) => {
-      if (["image", "stylesheet", "font"].includes(req.resourceType())) {
-        req.abort();
-      } else {
-        req.continue();
-      }
     });
   }
 
