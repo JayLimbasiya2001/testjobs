@@ -198,11 +198,11 @@
             `;
 
             try {
-                const response = await fetch('http://localhost:3333/api/start-scrape-wait', {
+                const response = await fetch('http://testjobs-1.onrender.com/api/start-scrape-wait', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
-                    }
+                    }   
                 });
 
                 const data = await response.json();

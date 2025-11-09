@@ -664,11 +664,24 @@ class LinkedInJobScraper {
 
       try {
         await page.goto(searchUrl, {
-          waitUntil: "domcontentloaded",
-          timeout: 60000,
+          waitUntil: "networkidle2",
+          timeout: 90000,
         });
 
-        await this.delay(5000);
+        console.log("⏳ Waiting for page to fully render...");
+        await this.delay(8000);
+
+        // Wait for job list to start appearing
+        try {
+          await page.waitForSelector(
+            ".jobs-search-results-list, .scaffold-layout__list-container, [data-job-id], .jobs-search-results__list-item",
+            { timeout: 15000 }
+          );
+          console.log("✅ Job results container found");
+        } catch (e) {
+          console.log("⚠️  Job results container not immediately visible, continuing...");
+        }
+
         console.log("✅ URL navigation successful");
         return true;
       } catch (navError) {
@@ -683,11 +696,22 @@ class LinkedInJobScraper {
         )}`;
 
         await page.goto(simpleUrl, {
-          waitUntil: "domcontentloaded",
-          timeout: 60000,
+          waitUntil: "networkidle2",
+          timeout: 90000,
         });
 
-        await this.delay(5000);
+        await this.delay(8000);
+        
+        // Wait for job list
+        try {
+          await page.waitForSelector(
+            ".jobs-search-results-list, .scaffold-layout__list-container, [data-job-id]",
+            { timeout: 15000 }
+          );
+        } catch (e) {
+          console.log("⚠️  Job results not immediately visible");
+        }
+        
         return true;
       }
     } catch (error) {
