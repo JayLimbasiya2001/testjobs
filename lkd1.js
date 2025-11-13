@@ -33,8 +33,8 @@ class LinkedInJobScraper {
 
     // LinkedIn credentials - UPDATE THESE FOR YOUR AZURE SERVER
     this.linkedinCredentials = {
-      email: "jaylimbasiya93@gmail.com", // UPDATE THIS
-      password: "your_linkedin_password", // UPDATE THIS
+      email: "jaylimbasiya1950@gmail.com", // UPDATE THIS
+      password: "TestJay@9683", // UPDATE THIS
     };
   }
 
