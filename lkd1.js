@@ -1101,33 +1101,108 @@ class LinkedInJobScraper {
   /**
    * Set stealth mode
    */
-  async setStealthMode(page) {
-    await page.setViewport({ width: 1400, height: 1000 });
+  // async setStealthMode(page) {
+  //   await page.setViewport({ width: 1400, height: 1000 });
 
+  //   await page.evaluateOnNewDocument(() => {
+  //     Object.defineProperty(navigator, "webdriver", { get: () => undefined });
+  //     Object.defineProperty(navigator, "plugins", {
+  //       get: () => [1, 2, 3, 4, 5],
+  //     });
+  //     Object.defineProperty(navigator, "languages", {
+  //       get: () => ["en-US", "en"],
+  //     });
+
+  //     // Override permissions
+  //     const originalQuery = window.navigator.permissions.query;
+  //     window.navigator.permissions.query = (parameters) =>
+  //       parameters.name === "notifications"
+  //         ? Promise.resolve({ state: Notification.permission })
+  //         : originalQuery(parameters);
+  //   });
+
+  //   await page.setUserAgent(
+  //     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+  //   );
+
+  //   await page.setExtraHTTPHeaders({
+  //     "Accept-Language": "en-US,en;q=0.9",
+  //     "Accept-Encoding": "gzip, deflate, br",
+  //   });
+  // }
+
+  /**
+   * Set enhanced stealth mode
+   */
+  async setStealthMode(page) {
+    // Set a realistic viewport
+    await page.setViewport({
+      width: 1280,
+      height: 720,
+      deviceScaleFactor: 1,
+    });
+
+    // Set a realistic user agent
+    await page.setUserAgent(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    );
+
+    // Extra stealth evasions
     await page.evaluateOnNewDocument(() => {
+      // Override webdriver
       Object.defineProperty(navigator, "webdriver", { get: () => undefined });
+
+      // Override plugins
       Object.defineProperty(navigator, "plugins", {
         get: () => [1, 2, 3, 4, 5],
       });
+
+      // Override languages
       Object.defineProperty(navigator, "languages", {
         get: () => ["en-US", "en"],
       });
 
-      // Override permissions
+      // Override platform
+      Object.defineProperty(navigator, "platform", {
+        get: () => "Win32",
+      });
+
+      // Mock permissions
       const originalQuery = window.navigator.permissions.query;
       window.navigator.permissions.query = (parameters) =>
         parameters.name === "notifications"
           ? Promise.resolve({ state: Notification.permission })
           : originalQuery(parameters);
+
+      // Mock chrome runtime
+      window.chrome = {
+        runtime: {},
+      };
+
+      // Remove automation痕迹
+      Object.defineProperty(navigator, "webdriver", {
+        get: () => false,
+      });
     });
 
-    await page.setUserAgent(
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    );
-
+    // Set extra headers
     await page.setExtraHTTPHeaders({
       "Accept-Language": "en-US,en;q=0.9",
       "Accept-Encoding": "gzip, deflate, br",
+      Accept:
+        "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
+      "Cache-Control": "no-cache",
+    });
+
+    // Enable request interception to block images and stylesheets
+    await page.setRequestInterception(true);
+    page.on("request", (req) => {
+      const resourceType = req.resourceType();
+      if (["image", "stylesheet", "font"].includes(resourceType)) {
+        req.abort();
+      } else {
+        req.continue();
+      }
     });
   }
 
