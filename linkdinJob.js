@@ -1,3 +1,4 @@
+require("dotenv").config();
 const fs = require("fs");
 const nodemailer = require("nodemailer");
 
@@ -81,7 +82,7 @@ class LinkedInJobScraper {
       // Development: Use regular puppeteer
       console.log("🚀 Launching browser for development...");
       return await puppeteer.launch({
-        headless: true,
+        headless: false,
         args: [
           "--no-sandbox",
           "--disable-setuid-sandbox",
@@ -93,7 +94,7 @@ class LinkedInJobScraper {
         ],
       });
     } else if (puppeteerCore) {
-      // Fallback: Use puppeteer-core without chromium (may need custom executable path)
+      // Fallback: Use puppeteer-core without chromium
       console.log(
         "⚠️ Using puppeteer-core without chromium (may need executablePath)"
       );
@@ -182,7 +183,7 @@ class LinkedInJobScraper {
 
       const results = {
         totalJobs: this.allJobs.length,
-        totalNodeJobs: this.nodeJobs.length,
+        nodeJobs: this.nodeJobs.length,
         locations: this.locations,
         searchQuery: this.searchQuery,
         scrapedAt: new Date().toISOString(),
@@ -449,10 +450,15 @@ class LinkedInJobScraper {
         return;
       }
 
+      // Wait for search results to load with better wait strategy
+      console.log("⏳ Waiting for search results to load...");
       await this.delay(5000);
 
       // Apply filters
       await this.applyFilters(page);
+
+      // Additional wait after filters
+      await this.delay(3000);
 
       // Get job list and scrape each job
       let scrapedCount = 0;
@@ -467,9 +473,14 @@ class LinkedInJobScraper {
         scrollAttempts++;
         console.log(`\n🔄 Scroll attempt ${scrollAttempts} for ${location}...`);
 
-        // Get all job cards on current page
+        // Get all job cards on current page using improved detection
         const jobCards = await this.getJobCardsList(page);
         console.log(`📋 Found ${jobCards.length} job cards on page`);
+
+        if (jobCards.length === 0) {
+          console.log("⚠️  No job cards found, breaking...");
+          break;
+        }
 
         // Scrape each job card
         for (
@@ -527,7 +538,7 @@ class LinkedInJobScraper {
   }
 
   /**
-   * Perform search using the search form
+   * Perform search using the search form (improved from working file)
    */
   async performSearch(page, location) {
     try {
@@ -690,36 +701,6 @@ class LinkedInJobScraper {
         console.log("✅ Experience level filters applied");
       }
 
-      // Apply Workplace Type filter
-      const wpFilterApplied = await page.evaluate((types) => {
-        const wpButtons = document.querySelectorAll(
-          'button[aria-label*="Workplace type"], button[aria-label*="Workplace Type"]'
-        );
-        for (const button of wpButtons) {
-          button.click();
-          return true;
-        }
-        return false;
-      });
-      if (wpFilterApplied) {
-        await this.delay(2000);
-        // Select On-site, Remote, Hybrid
-        await page.evaluate((types) => {
-          const checkboxes = document.querySelectorAll(
-            'input[type="checkbox"]'
-          );
-          for (const checkbox of checkboxes) {
-            const label =
-              checkbox.closest("label")?.textContent?.toLowerCase() || "";
-            if (types.includes(label)) {
-              checkbox.click();
-            }
-          }
-        }, this.workplaceTypes);
-        await this.delay(2000);
-        console.log("✅ Workplace type filters applied");
-      }
-
       // Apply Date Posted filter
       const dateFilterApplied = await page.evaluate(() => {
         const dateButtons = document.querySelectorAll(
@@ -751,38 +732,6 @@ class LinkedInJobScraper {
         console.log("✅ Date posted filter applied");
       }
 
-      // Apply Most Recent sort
-      const sortApplied = await page.evaluate(() => {
-        const sortButtons = document.querySelectorAll(
-          'button[aria-label*="Sort by"], select'
-        );
-        for (const button of sortButtons) {
-          const text = button.textContent?.toLowerCase() || "";
-          if (text.includes("sort") || text.includes("most recent")) {
-            button.click();
-            return true;
-          }
-        }
-        return false;
-      });
-
-      if (sortApplied) {
-        await this.delay(2000);
-
-        await page.evaluate(() => {
-          const options = document.querySelectorAll("li, option");
-          for (const option of options) {
-            const text = option.textContent?.toLowerCase() || "";
-            if (text.includes("most recent") || text.includes("date")) {
-              option.click();
-              break;
-            }
-          }
-        });
-
-        console.log("✅ Sort by Most Recent applied");
-      }
-
       await this.delay(3000);
       console.log("✅ All filters applied");
     } catch (error) {
@@ -791,7 +740,7 @@ class LinkedInJobScraper {
   }
 
   /**
-   * Get list of job cards
+   * Get list of job cards (improved from working file)
    */
   async getJobCardsList(page) {
     return await page.evaluate(() => {
@@ -803,7 +752,7 @@ class LinkedInJobScraper {
   }
 
   /**
-   * Scrape individual job card
+   * Scrape individual job card (improved from working file)
    */
   async scrapeJobCard(page, index, location, processedJobIds) {
     try {
@@ -1058,6 +1007,8 @@ class LinkedInJobScraper {
         return false;
       }
 
+      console.log("🌐 Navigating to LinkedIn login page...");
+
       await page.goto(`${this.baseURL}/login`, {
         waitUntil: "domcontentloaded",
         timeout: 30000,
@@ -1077,6 +1028,8 @@ class LinkedInJobScraper {
         (await page.$("[name='session_password']"));
 
       if (usernameField && passwordField) {
+        console.log("📝 Filling login form...");
+
         await usernameField.type(credentials.email, { delay: 100 });
         await this.delay(500);
         await passwordField.type(credentials.password, { delay: 100 });
@@ -1084,6 +1037,7 @@ class LinkedInJobScraper {
 
         const submitButton = await page.$("button[type='submit']");
         if (submitButton) {
+          console.log("🔘 Clicking submit button...");
           await submitButton.click();
 
           // Wait for navigation
@@ -1101,6 +1055,8 @@ class LinkedInJobScraper {
             console.log("✅ Successfully logged into LinkedIn");
             await this.delay(3000);
             return true;
+          } else {
+            console.log("⚠️  Login may have failed or requires verification");
           }
         }
       }
@@ -1316,7 +1272,7 @@ if (require.main === module) {
       console.log("✅ Scraping completed successfully");
       if (results && !results.error) {
         console.log(
-          `📊 Results: ${results.totalJobs} total jobs, ${results.totalNodeJobs} Node.js jobs`
+          `📊 Results: ${results.totalJobs} total jobs, ${results.nodeJobs} Node.js jobs`
         );
       }
     } catch (error) {

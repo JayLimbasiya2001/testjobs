@@ -957,19 +957,42 @@ class LinkedInJobScraper {
     try {
       const credentials = this.getLinkedInCredentials();
 
+      console.log("🔐 Login Credentials Check:");
+      console.log(`   Email provided: ${credentials.email ? "YES" : "NO"}`);
+      console.log(
+        `   Password provided: ${credentials.password ? "YES" : "NO"}`
+      );
+
       if (!credentials.email || !credentials.password) {
-        console.log("⚠️  No LinkedIn credentials provided");
-        console.log("💡 Create a linkedin_config.json file with:");
+        console.log("❌ Missing LinkedIn credentials");
+        console.log("💡 Please create linkedin_config.json with:");
         console.log(
           JSON.stringify(
-            { email: "your-email@example.com", password: "your-password" },
+            {
+              email: "jaylimbasiya1950@gmail.com",
+              password: "TestJay@9683",
+            },
             null,
             2
           )
         );
+
+        // Check if file exists
+        try {
+          if (fs.existsSync("./linkedin_config.json")) {
+            console.log("✅ Config file exists, checking permissions...");
+            const stats = fs.statSync("./linkedin_config.json");
+            console.log(`   File permissions: ${stats.mode.toString(8)}`);
+          } else {
+            console.log("❌ Config file does not exist");
+          }
+        } catch (fileError) {
+          console.log("❌ Error accessing config file:", fileError.message);
+        }
         return false;
       }
 
+      console.log("🌐 Navigating to LinkedIn login...");
       await page.goto(`${this.baseURL}/login`, {
         waitUntil: "domcontentloaded",
         timeout: 30000,
@@ -977,49 +1000,123 @@ class LinkedInJobScraper {
 
       await this.delay(3000);
 
-      // Wait for login form
-      await page.waitForSelector("#username, [name='session_key']", {
-        timeout: 15000,
+      // Take screenshot for debugging
+      await page.screenshot({ path: "login-page.png", fullPage: true });
+      console.log("📸 Login page screenshot saved as 'login-page.png'");
+
+      // Check if we're already logged in
+      const isAlreadyLoggedIn = await page.evaluate(() => {
+        return (
+          document.querySelector(".global-nav, .feed-identity-module") !== null
+        );
       });
 
-      const usernameField =
-        (await page.$("#username")) || (await page.$("[name='session_key']"));
-      const passwordField =
-        (await page.$("#password")) ||
-        (await page.$("[name='session_password']"));
+      if (isAlreadyLoggedIn) {
+        console.log("✅ Already logged into LinkedIn");
+        return true;
+      }
 
-      if (usernameField && passwordField) {
-        await usernameField.type(credentials.email, { delay: 100 });
-        await this.delay(500);
-        await passwordField.type(credentials.password, { delay: 100 });
-        await this.delay(500);
+      // Wait for login form with multiple selectors
+      let usernameField;
+      const selectors = [
+        "#username",
+        '[name="session_key"]',
+        'input[type="email"]',
+      ];
 
-        const submitButton = await page.$("button[type='submit']");
-        if (submitButton) {
-          await submitButton.click();
-
-          // Wait for navigation
-          await this.delay(8000);
-
-          // Check if login was successful
-          const isLoggedIn = await page.evaluate(() => {
-            return (
-              document.querySelector(".global-nav, .feed-identity-module") !==
-              null
-            );
-          });
-
-          if (isLoggedIn) {
-            console.log("✅ Successfully logged into LinkedIn");
-            await this.delay(3000);
-            return true;
-          }
+      for (const selector of selectors) {
+        usernameField = await page.$(selector);
+        if (usernameField) {
+          console.log(`✅ Found username field with selector: ${selector}`);
+          break;
         }
       }
 
-      return false;
+      if (!usernameField) {
+        console.log("❌ Could not find username field. Available elements:");
+        const pageContent = await page.content();
+        const formElements = await page.$$("input, button, form");
+        console.log(`   Found ${formElements.length} form elements`);
+
+        // List all input fields
+        const inputs = await page.$$eval("input", (elements) =>
+          elements.map((el) => ({
+            id: el.id,
+            name: el.name,
+            type: el.type,
+            placeholder: el.placeholder,
+          }))
+        );
+        console.log("   Input fields:", inputs);
+
+        return false;
+      }
+
+      // Fill credentials
+      console.log("⌨️ Filling credentials...");
+      await usernameField.click({ clickCount: 3 }); // Select all text
+      await usernameField.type(credentials.email, { delay: 100 });
+
+      const passwordField =
+        (await page.$("#password")) ||
+        (await page.$('[name="session_password"]'));
+      if (!passwordField) {
+        console.log("❌ Could not find password field");
+        return false;
+      }
+
+      await passwordField.click({ clickCount: 3 });
+      await passwordField.type(credentials.password, { delay: 100 });
+
+      // Click submit
+      console.log("🔘 Clicking submit button...");
+      const submitButton = await page.$('button[type="submit"]');
+      if (submitButton) {
+        await submitButton.click();
+      } else {
+        // Try alternative submit method
+        await page.keyboard.press("Enter");
+      }
+
+      // Wait for navigation with better handling
+      console.log("⏳ Waiting for login to complete...");
+      await this.delay(10000);
+
+      // Check for login success
+      const loginSuccess = await page.evaluate(() => {
+        return (
+          document.querySelector(
+            ".global-nav, .feed-identity-module, [data-test-global-nav]"
+          ) !== null
+        );
+      });
+
+      if (loginSuccess) {
+        console.log("✅ Successfully logged into LinkedIn");
+        await this.delay(3000);
+        return true;
+      } else {
+        // Check for error messages
+        const errorMessage = await page.evaluate(() => {
+          const errorElement = document.querySelector(
+            ".error-for-username, .alert-error, [data-test-error]"
+          );
+          return errorElement ? errorElement.textContent.trim() : null;
+        });
+
+        if (errorMessage) {
+          console.log(`❌ Login error: ${errorMessage}`);
+        } else {
+          console.log("❌ Login failed - unknown reason");
+          // Take screenshot of current state
+          await page.screenshot({ path: "login-failed.png", fullPage: true });
+          console.log("📸 Failed login state saved as 'login-failed.png'");
+        }
+        return false;
+      }
     } catch (error) {
-      console.error("❌ Login failed:", error.message);
+      console.error("💥 Login failed with error:", error.message);
+      console.error("Stack trace:", error.stack);
       return false;
     }
   }
