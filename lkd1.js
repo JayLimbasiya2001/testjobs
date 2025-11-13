@@ -1,29 +1,7 @@
+const puppeteer = require("puppeteer");
 const fs = require("fs");
 const nodemailer = require("nodemailer");
-
-// Conditional imports for Vercel compatibility
-let puppeteer, puppeteerCore, chromium;
-
-// Try to import puppeteer (for local development)
-try {
-  puppeteer = require("puppeteer");
-} catch (e) {
-  console.log("puppeteer not available, will use puppeteer-core");
-}
-
-// Try to import puppeteer-core (for production/Vercel)
-try {
-  puppeteerCore = require("puppeteer-core");
-} catch (e) {
-  console.log("puppeteer-core not available");
-}
-
-// Try to import chromium-min (for Vercel)
-try {
-  chromium = require("@sparticuz/chromium-min");
-} catch (e) {
-  console.log("@sparticuz/chromium-min not available");
-}
+const path = require("path");
 
 class LinkedInJobScraper {
   constructor() {
@@ -31,14 +9,15 @@ class LinkedInJobScraper {
     this.delayBetweenJobs = 2000;
     this.delayBetweenLocations = 5000;
     this.maxJobsPerLocation = 500;
-    this.navigationTimeout = 90000;
+    this.navigationTimeout = 90000; // Increased timeout
 
     // Search parameters
     this.searchQuery =
       '"software engineer" OR "software developer" OR "backend engineer" OR "backend developer" OR "application developer" OR "application engineer" OR "node" OR "full stack"';
     this.locations = ["Bangalore", "Pune", "Mumbai", "Gurugram", "Ahmedabad"];
+    // this.locations = ["United States"];
     this.experienceLevels = ["2", "3"]; // Entry level, Associate, Mid-Senior
-    this.datePosted = "r86400"; // Past 24 hours
+    this.datePosted = "r86400"; // Past 1 day
     this.workplaceTypes = ["1"]; // 1=On-site, 2=Remote, 3=Hybrid
 
     this.allJobs = [];
@@ -48,68 +27,10 @@ class LinkedInJobScraper {
     this.emailConfig = {
       service: "gmail",
       auth: {
-        user: process.env.EMAIL_USER || "jaylimbasiya93@gmail.com",
-        pass: process.env.EMAIL_PASS || "mjsg ikgq yokl bmew",
+        user: "jaylimbasiya93@gmail.com",
+        pass: "mjsg ikgq yokl bmew",
       },
     };
-
-    // Check if running in production (Vercel)
-    this.isProduction =
-      process.env.NODE_ENV === "production" ||
-      process.env.VERCEL_ENV === "production";
-  }
-
-  /**
-   * Launch browser with Vercel compatibility
-   */
-  async launchBrowser() {
-    if (this.isProduction && puppeteerCore && chromium) {
-      // Production/Vercel: Use puppeteer-core with chromium-min
-      console.log("🚀 Launching browser for production (Vercel)...");
-      
-      const executablePath = await chromium.executablePath(
-        "https://github.com/Sparticuz/chromium/releases/download/v131.0.1/chromium-v131.0.1-pack.tar"
-      );
-
-      return await puppeteerCore.launch({
-        executablePath,
-        args: chromium.args,
-        headless: chromium.headless,
-        defaultViewport: chromium.defaultViewport,
-      });
-    } else if (puppeteer) {
-      // Development: Use regular puppeteer
-      console.log("🚀 Launching browser for development...");
-      return await puppeteer.launch({
-        headless: false,
-        args: [
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
-          "--disable-blink-features=AutomationControlled",
-          "--window-size=1400,1000",
-          "--disable-dev-shm-usage",
-          "--disable-accelerated-2d-canvas",
-          "--disable-gpu",
-        ],
-      });
-    } else if (puppeteerCore) {
-      // Fallback: Use puppeteer-core without chromium (may need custom executable path)
-      console.log("⚠️ Using puppeteer-core without chromium (may need executablePath)");
-      return await puppeteerCore.launch({
-        headless: true,
-        args: [
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
-          "--disable-blink-features=AutomationControlled",
-          "--window-size=1400,1000",
-          "--disable-dev-shm-usage",
-        ],
-      });
-    } else {
-      throw new Error(
-        "No Puppeteer installation found. Please install puppeteer or puppeteer-core with @sparticuz/chromium-min"
-      );
-    }
   }
 
   /**
@@ -124,13 +45,23 @@ class LinkedInJobScraper {
       console.log("=".repeat(70));
       console.log(`📝 Search Query: Software Engineer/Developer/Node.js roles`);
       console.log(`📍 Locations: ${this.locations.join(", ")}`);
-      console.log(`⏰ Started at: ${new Date().toLocaleString()}`);
-      console.log(`🌍 Environment: ${this.isProduction ? "Production (Vercel)" : "Development"}\n`);
+      console.log(`⏰ Started at: ${new Date().toLocaleString()}\n`);
 
       const startTime = Date.now();
 
-      // Launch browser with Vercel compatibility
-      browser = await this.launchBrowser();
+      // Launch browser
+      browser = await puppeteer.launch({
+        headless: false,
+        args: [
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          "--disable-blink-features=AutomationControlled",
+          "--window-size=1400,1000",
+          "--disable-dev-shm-usage",
+          "--disable-accelerated-2d-canvas",
+          "--disable-gpu",
+        ],
+      });
 
       page = await browser.newPage();
       await this.setStealthMode(page);
@@ -145,8 +76,7 @@ class LinkedInJobScraper {
 
       if (!loginSuccess) {
         console.log("❌ Login failed. Exiting...");
-        await browser.close();
-        return { error: "Login failed", jobs: [], nodeJobs: [] };
+        return;
       }
 
       console.log("✅ Login successful!\n");
@@ -170,26 +100,11 @@ class LinkedInJobScraper {
         }
       }
 
-      // Step 4: Save results (only in development, or return in production)
+      // Step 4: Save results
       const endTime = Date.now();
       const totalTime = ((endTime - startTime) / 1000).toFixed(2);
 
-      const results = {
-        totalJobs: this.allJobs.length,
-        totalNodeJobs: this.nodeJobs.length,
-        locations: this.locations,
-        searchQuery: this.searchQuery,
-        scrapedAt: new Date().toISOString(),
-        totalTime: totalTime,
-        allJobs: this.allJobs,
-        nodeJobs: this.nodeJobs,
-      };
-
-      // Save files only in development (file system available)
-      if (!this.isProduction) {
-        this.saveResults();
-      }
-
+      this.saveResults();
       this.displaySummary(totalTime);
 
       // Step 5: Send Node.js jobs via email
@@ -197,14 +112,11 @@ class LinkedInJobScraper {
       await this.sendNodeJsJobsEmail();
 
       await browser.close();
-
-      return results;
     } catch (error) {
       console.error("💥 Error in job scraping:", error);
       if (browser) {
         await browser.close();
       }
-      throw error;
     }
   }
 
@@ -229,7 +141,7 @@ class LinkedInJobScraper {
 
       const mailOptions = {
         from: this.emailConfig.auth.user,
-        to: this.emailConfig.auth.user,
+        to: "jaylimbasiya93@gmail.com",
         subject: `Node.js Jobs Report - ${new Date().toLocaleDateString()} (${
           this.nodeJobs.length
         } jobs found)`,
@@ -249,7 +161,7 @@ class LinkedInJobScraper {
 
       await transporter.sendMail(mailOptions);
       console.log(
-        `✅ Node.js jobs report sent successfully to ${this.emailConfig.auth.user}`
+        "✅ Node.js jobs report sent successfully to jaylimbasiya93@gmail.com"
       );
     } catch (error) {
       console.error("❌ Error sending email:", error.message);
@@ -434,6 +346,7 @@ class LinkedInJobScraper {
    */
   async searchJobsForLocation(page, location) {
     try {
+      // Use the search form on the page instead of URL navigation
       console.log(`🔍 Searching for jobs in ${location}...`);
 
       const searchSuccess = await this.performSearch(page, location);
@@ -582,7 +495,7 @@ class LinkedInJobScraper {
         return true;
       }
 
-      // Method 2: If form method fails, try URL approach
+      // Method 2: If form method fails, try URL approach with better error handling
       console.log("⚠️ Form method failed, trying URL navigation...");
       const searchUrl = this.buildSearchUrl(location);
 
@@ -1046,7 +959,14 @@ class LinkedInJobScraper {
 
       if (!credentials.email || !credentials.password) {
         console.log("⚠️  No LinkedIn credentials provided");
-        console.log("💡 Set LINKEDIN_EMAIL and LINKEDIN_PASSWORD environment variables");
+        console.log("💡 Create a linkedin_config.json file with:");
+        console.log(
+          JSON.stringify(
+            { email: "your-email@example.com", password: "your-password" },
+            null,
+            2
+          )
+        );
         return false;
       }
 
@@ -1141,7 +1061,6 @@ class LinkedInJobScraper {
    * Get LinkedIn credentials
    */
   getLinkedInCredentials() {
-    // Priority: Environment variables > Config file
     if (process.env.LINKEDIN_EMAIL && process.env.LINKEDIN_PASSWORD) {
       return {
         email: process.env.LINKEDIN_EMAIL,
@@ -1149,21 +1068,18 @@ class LinkedInJobScraper {
       };
     }
 
-    // Try to read from config file (only works in development)
-    if (!this.isProduction) {
-      try {
-        if (fs.existsSync("./linkedin_config.json")) {
-          const config = JSON.parse(
-            fs.readFileSync("./linkedin_config.json", "utf8")
-          );
-          return {
-            email: config.email || "",
-            password: config.password || "",
-          };
-        }
-      } catch (error) {
-        console.error("Error reading config file:", error.message);
+    try {
+      if (fs.existsSync("./linkedin_config.json")) {
+        const config = JSON.parse(
+          fs.readFileSync("./linkedin_config.json", "utf8")
+        );
+        return {
+          email: config.email || "",
+          password: config.password || "",
+        };
       }
+    } catch (error) {
+      console.error("Error reading config file:", error.message);
     }
 
     return { email: "", password: "" };
@@ -1177,14 +1093,9 @@ class LinkedInJobScraper {
   }
 
   /**
-   * Save results to files (only in development)
+   * Save results to files
    */
   saveResults() {
-    if (this.isProduction) {
-      console.log("⚠️ File saving skipped in production (Vercel)");
-      return;
-    }
-
     const timestamp = new Date().getTime();
 
     // Save all jobs
@@ -1296,22 +1207,8 @@ class LinkedInJobScraper {
   }
 }
 
-// Export the class for use in other files (e.g., Next.js API routes)
-module.exports = LinkedInJobScraper;
-
-// If run directly, execute the scraper
-if (require.main === module) {
-  (async () => {
-    const scraper = new LinkedInJobScraper();
-    try {
-      const results = await scraper.scrapeJobs();
-      console.log("✅ Scraping completed successfully");
-      if (results && !results.error) {
-        console.log(`📊 Results: ${results.totalJobs} total jobs, ${results.totalNodeJobs} Node.js jobs`);
-      }
-    } catch (error) {
-      console.error("❌ Scraping failed:", error);
-      process.exit(1);
-    }
-  })();
-}
+// Run the scraper
+(async () => {
+  const scraper = new LinkedInJobScraper();
+  await scraper.scrapeJobs();
+})();

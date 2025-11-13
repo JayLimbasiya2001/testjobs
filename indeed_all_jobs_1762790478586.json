@@ -1,0 +1,13 @@
+{
+  "totalJobs": 0,
+  "locations": [
+    "Bangalore, Karnataka",
+    "Pune, Maharashtra",
+    "Mumbai, Maharashtra",
+    "Gurugram, Haryana",
+    "Ahmedabad, Gujarat"
+  ],
+  "searchQuery": "node.js OR nodejs OR node js OR express.js OR backend developer OR software engineer",
+  "scrapedAt": "2025-11-10T16:01:18.586Z",
+  "jobs": []
+}

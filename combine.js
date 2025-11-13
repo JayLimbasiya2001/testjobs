@@ -1,29 +1,5 @@
-require("dotenv").config();
+const puppeteer = require("puppeteer");
 const fs = require("fs");
-
-// Conditional imports for Vercel compatibility
-let puppeteer, puppeteerCore, chromium;
-
-// Try to import puppeteer (for local development)
-try {
-  puppeteer = require("puppeteer");
-} catch (e) {
-  console.log("puppeteer not available, will use puppeteer-core");
-}
-
-// Try to import puppeteer-core (for production/Vercel)
-try {
-  puppeteerCore = require("puppeteer-core");
-} catch (e) {
-  console.log("puppeteer-core not available");
-}
-
-// Try to import chromium-min (for Vercel)
-try {
-  chromium = require("@sparticuz/chromium-min");
-} catch (e) {
-  console.log("@sparticuz/chromium-min not available");
-}
 
 class LinkedInEmailScraper {
   constructor() {
@@ -39,68 +15,7 @@ class LinkedInEmailScraper {
     this.linkedinScrapingTime = 0;
     this.emailFindingTime = 0;
     this.resultsSavingTime = 0;
-    this.searchRoles = ["hr", "software engineer", "software developer"];
-    this.navigationTimeout = 90000;
-
-    // Check if running in production (Vercel)
-    this.isProduction =
-      process.env.NODE_ENV === "production" ||
-      process.env.VERCEL_ENV === "production";
-  }
-
-  /**
-   * Launch browser with Vercel compatibility
-   */
-  async launchBrowser() {
-    if (this.isProduction && puppeteerCore && chromium) {
-      // Production/Vercel: Use puppeteer-core with chromium-min
-      console.log("🚀 Launching browser for production (Vercel)...");
-
-      const executablePath = await chromium.executablePath(
-        "https://github.com/Sparticuz/chromium/releases/download/v131.0.1/chromium-v131.0.1-pack.tar"
-      );
-
-      return await puppeteerCore.launch({
-        executablePath,
-        args: chromium.args,
-        headless: chromium.headless,
-        defaultViewport: chromium.defaultViewport,
-      });
-    } else if (puppeteer) {
-      // Development: Use regular puppeteer
-      console.log("🚀 Launching browser for development...");
-      return await puppeteer.launch({
-        headless: this.isProduction ? true : false,
-        args: [
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
-          "--disable-blink-features=AutomationControlled",
-          "--window-size=1400,1000",
-          "--disable-dev-shm-usage",
-          "--disable-accelerated-2d-canvas",
-          "--disable-gpu",
-        ],
-      });
-    } else if (puppeteerCore) {
-      // Fallback: Use puppeteer-core without chromium
-      console.log(
-        "⚠️ Using puppeteer-core without chromium (may need executablePath)"
-      );
-      return await puppeteerCore.launch({
-        headless: true,
-        args: [
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
-          "--disable-blink-features=AutomationControlled",
-          "--window-size=1400,1000",
-          "--disable-dev-shm-usage",
-        ],
-      });
-    } else {
-      throw new Error(
-        "No Puppeteer installation found. Please install puppeteer or puppeteer-core with @sparticuz/chromium-min"
-      );
-    }
+    this.searchRoles = ["hr", "software engineer", "software developer"]; // Default search roles
   }
 
   /**
@@ -128,11 +43,6 @@ class LinkedInEmailScraper {
         }\n`
       );
       console.log(`⏰ Workflow started at: ${new Date().toLocaleString()}\n`);
-      console.log(
-        `🌍 Environment: ${
-          this.isProduction ? "Production (Vercel)" : "Development"
-        }\n`
-      );
 
       // Step 1: Get names from LinkedIn
       console.log("📝 STEP 1: Getting names from LinkedIn...");
@@ -259,13 +169,17 @@ class LinkedInEmailScraper {
     let page;
 
     try {
-      browser = await this.launchBrowser();
+      browser = await puppeteer.launch({
+        headless: true,
+        args: [
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          "--disable-blink-features=AutomationControlled",
+          "--window-size=1200,800",
+        ],
+      });
+
       page = await browser.newPage();
-
-      // Increase timeout for production
-      page.setDefaultNavigationTimeout(60000);
-      page.setDefaultTimeout(60000);
-
       await this.setEmailFinderStealthMode(page);
 
       const formattedName = this.formatName(name);
@@ -273,7 +187,7 @@ class LinkedInEmailScraper {
       const url = `${this.emailFinderURL}?name=${formattedName}&domain=${formattedDomain}`;
 
       await page.goto(url, {
-        waitUntil: "domcontentloaded",
+        waitUntil: "networkidle2",
         timeout: 60000,
       });
 
@@ -561,22 +475,22 @@ class LinkedInEmailScraper {
         }\n`
       );
 
-      browser = await this.launchBrowser();
+      browser = await puppeteer.launch({
+        headless: false,
+        args: [
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          "--disable-blink-features=AutomationControlled",
+          "--window-size=1400,1000",
+          "--disable-features=VizDisplayCompositor",
+        ],
+      });
+
       page = await browser.newPage();
-
-      // Increase timeouts for production
-      page.setDefaultNavigationTimeout(this.navigationTimeout);
-      page.setDefaultTimeout(this.navigationTimeout);
-
       await this.setStealthMode(page);
 
       // Login to LinkedIn
-      const loginSuccess = await this.linkedinLogin(page);
-
-      if (!loginSuccess) {
-        console.log("❌ LinkedIn login failed. Continuing without login...");
-        // Continue without login - some company pages might be accessible
-      }
+      await this.linkedinLogin(page);
 
       // Get company page and navigate to people section
       const peopleNames = await this.getPeopleFromCompanyPage(
@@ -1219,284 +1133,57 @@ class LinkedInEmailScraper {
   /**
    * LinkedIn login
    */
-  /**
-   * LinkedIn login
-   */
-  /**
-   * LinkedIn login
-   */
   async linkedinLogin(page) {
     try {
       const credentials = this.getLinkedInCredentials();
-
       if (!credentials.email || !credentials.password) {
         console.log("⚠️  No LinkedIn credentials provided");
         return false;
       }
 
-      console.log("🌐 Navigating to LinkedIn login page...");
-
-      // IMPROVEMENT 1: Add cookies before navigation (if available)
-      if (process.env.LINKEDIN_COOKIES) {
-        try {
-          const cookies = JSON.parse(process.env.LINKEDIN_COOKIES);
-          await page.setCookie(...cookies);
-          console.log("✅ Pre-existing cookies loaded");
-
-          // Try to navigate directly to feed
-          await page.goto(`${this.baseURL}/feed`, {
-            waitUntil: "domcontentloaded",
-            timeout: 30000,
-          });
-
-          await this.delay(3000);
-
-          // Check if already logged in
-          const isLoggedIn = await page.evaluate(() => {
-            return (
-              document.querySelector(".global-nav, .feed-identity-module") !==
-              null
-            );
-          });
-
-          if (isLoggedIn) {
-            console.log("✅ Already logged in via cookies");
-            return true;
-          }
-        } catch (e) {
-          console.log("⚠️  Cookie login failed, trying regular login");
-        }
-      }
-
-      // IMPROVEMENT 2: Enhanced stealth for login page
-      await page.evaluateOnNewDocument(() => {
-        // Override navigator properties
-        Object.defineProperty(navigator, "webdriver", { get: () => undefined });
-        Object.defineProperty(navigator, "plugins", {
-          get: () => [1, 2, 3, 4, 5],
-        });
-        Object.defineProperty(navigator, "languages", {
-          get: () => ["en-US", "en"],
-        });
-        Object.defineProperty(navigator, "platform", { get: () => "Win32" });
-        Object.defineProperty(navigator, "hardwareConcurrency", {
-          get: () => 8,
-        });
-        Object.defineProperty(navigator, "deviceMemory", { get: () => 8 });
-
-        // Mock chrome object
-        window.chrome = { runtime: {} };
-
-        // Override permissions
-        const originalQuery = window.navigator.permissions.query;
-        window.navigator.permissions.query = (parameters) =>
-          parameters.name === "notifications"
-            ? Promise.resolve({ state: Notification.permission })
-            : originalQuery(parameters);
-      });
-
+      console.log("🔐 Logging into LinkedIn...");
       await page.goto(`${this.baseURL}/login`, {
-        waitUntil: "networkidle2", // Changed from domcontentloaded
-        timeout: 30000,
+        waitUntil: "domcontentloaded",
       });
 
-      await this.delay(3000);
-
-      // IMPROVEMENT 3: Better form detection
-      try {
-        await page.waitForFunction(
-          () => {
-            const usernameField =
-              document.querySelector("#username") ||
-              document.querySelector('[name="session_key"]');
-            const passwordField =
-              document.querySelector("#password") ||
-              document.querySelector('[name="session_password"]');
-            return usernameField && passwordField;
-          },
-          { timeout: 15000 }
-        );
-      } catch (e) {
-        console.log("⚠️  Login form not found");
-
-        // IMPROVEMENT 4: Take screenshot for debugging (only in dev)
-        if (!this.isProduction) {
-          await page.screenshot({ path: "login-error.png" });
-          console.log("📸 Screenshot saved: login-error.png");
-        }
-
-        return false;
-      }
+      // Wait for login form
+      await page.waitForFunction(
+        () =>
+          document.querySelector("#username") ||
+          document.querySelector('[name="session_key"]'),
+        { timeout: 15000 }
+      );
 
       const usernameField =
-        (await page.$("#username")) || (await page.$("[name='session_key']"));
+        (await page.$("#username")) || (await page.$('[name="session_key"]'));
       const passwordField =
         (await page.$("#password")) ||
-        (await page.$("[name='session_password']"));
+        (await page.$('[name="session_password"]'));
 
       if (usernameField && passwordField) {
-        console.log("📝 Filling login form...");
+        await usernameField.type(credentials.email, { delay: 100 });
+        await passwordField.type(credentials.password, { delay: 100 });
 
-        // IMPROVEMENT 5: Human-like typing with random delays
-        await this.humanLikeType(usernameField, credentials.email);
-        await this.delay(500 + Math.random() * 500);
-
-        await this.humanLikeType(passwordField, credentials.password);
-        await this.delay(500 + Math.random() * 500);
-
-        // IMPROVEMENT 6: Check for CAPTCHA before submitting
-        const hasCaptcha = await page.evaluate(() => {
-          return (
-            document.querySelector('[data-test-id="recaptcha-iframe"]') !==
-              null ||
-            document.querySelector(".g-recaptcha") !== null ||
-            document.querySelector('[id*="captcha"]') !== null
-          );
-        });
-
-        if (hasCaptcha) {
-          console.log(
-            "⚠️  CAPTCHA detected - cannot proceed with automated login"
-          );
-          return false;
-        }
-
-        const submitButton = await page.$("button[type='submit']");
+        const submitButton = await page.$('button[type="submit"]');
         if (submitButton) {
-          console.log("🔘 Clicking submit button...");
-
-          // IMPROVEMENT 7: Wait for navigation promise
-          await Promise.all([
-            page
-              .waitForNavigation({
-                waitUntil: "networkidle2",
-                timeout: 30000,
-              })
-              .catch(() => console.log("Navigation timeout - continuing...")),
-            submitButton.click(),
+          await submitButton.click();
+          await Promise.race([
+            page.waitForNavigation({
+              waitUntil: "domcontentloaded",
+              timeout: 20000,
+            }),
+            page.waitForSelector(".global-nav", { timeout: 20000 }),
           ]);
-
-          await this.delay(5000);
-
-          // IMPROVEMENT 8: Enhanced login verification
-          const loginStatus = await this.verifyLoginStatus(page);
-
-          if (loginStatus.success) {
-            console.log("✅ Successfully logged into LinkedIn");
-
-            // IMPROVEMENT 9: Save cookies for future use
-            if (!this.isProduction) {
-              const cookies = await page.cookies();
-              console.log("💾 Cookies saved for future use");
-              console.log(
-                "Set LINKEDIN_COOKIES env var to:",
-                JSON.stringify(cookies)
-              );
-            }
-
-            return true;
-          } else {
-            console.log(`⚠️  Login verification failed: ${loginStatus.reason}`);
-            return false;
-          }
+          console.log("✅ Successfully logged into LinkedIn");
+          await this.delay(3000);
+          return true;
         }
       }
-
       return false;
     } catch (error) {
-      console.error("❌ Login failed:", error.message);
+      console.log("❌ Login failed:", error.message);
       return false;
     }
-  }
-
-  // IMPROVEMENT 10: Human-like typing function
-  async humanLikeType(element, text) {
-    for (const char of text) {
-      await element.type(char, {
-        delay: 50 + Math.random() * 100, // Random delay between 50-150ms
-      });
-    }
-  }
-
-  // IMPROVEMENT 11: Enhanced login verification
-  async verifyLoginStatus(page) {
-    const checks = [
-      // Check 1: Look for logged-in elements
-      async () => {
-        const hasNav = await page.evaluate(() => {
-          return (
-            document.querySelector(".global-nav, .feed-identity-module") !==
-            null
-          );
-        });
-        if (hasNav) return { success: true };
-        return null;
-      },
-
-      // Check 2: Check URL
-      async () => {
-        const url = page.url();
-        if (url.includes("/feed") || url.includes("/mynetwork")) {
-          return { success: true };
-        }
-        return null;
-      },
-
-      // Check 3: Look for security challenges
-      async () => {
-        const hasChallenge = await page.evaluate(() => {
-          const challengeTexts = [
-            "verify",
-            "checkpoint",
-            "challenge",
-            "security",
-            "unusual activity",
-            "confirm your identity",
-          ];
-          const bodyText = document.body.textContent.toLowerCase();
-          return challengeTexts.some((text) => bodyText.includes(text));
-        });
-
-        if (hasChallenge) {
-          return { success: false, reason: "Security challenge detected" };
-        }
-        return null;
-      },
-
-      // Check 4: Look for error messages
-      async () => {
-        const hasError = await page.evaluate(() => {
-          const errorSelectors = [
-            ".error-message",
-            ".alert-danger",
-            '[role="alert"]',
-          ];
-          for (const selector of errorSelectors) {
-            const element = document.querySelector(selector);
-            if (element && element.textContent.trim()) {
-              return element.textContent.trim();
-            }
-          }
-          return null;
-        });
-
-        if (hasError) {
-          return { success: false, reason: `Error: ${hasError}` };
-        }
-        return null;
-      },
-    ];
-
-    // Run all checks
-    for (const check of checks) {
-      const result = await check();
-      if (result) return result;
-    }
-
-    return {
-      success: false,
-      reason: "Unknown - could not verify login status",
-    };
   }
 
   /**
@@ -1504,63 +1191,38 @@ class LinkedInEmailScraper {
    */
   async setStealthMode(page) {
     await page.setViewport({ width: 1400, height: 1000 });
-
     await page.evaluateOnNewDocument(() => {
       Object.defineProperty(navigator, "webdriver", { get: () => undefined });
       Object.defineProperty(navigator, "plugins", {
         get: () => [1, 2, 3, 4, 5],
       });
-      Object.defineProperty(navigator, "languages", {
-        get: () => ["en-US", "en"],
-      });
-
-      // Override permissions
-      const originalQuery = window.navigator.permissions.query;
-      window.navigator.permissions.query = (parameters) =>
-        parameters.name === "notifications"
-          ? Promise.resolve({ state: Notification.permission })
-          : originalQuery(parameters);
     });
-
     await page.setUserAgent(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     );
-
-    await page.setExtraHTTPHeaders({
-      "Accept-Language": "en-US,en;q=0.9",
-      "Accept-Encoding": "gzip, deflate, br",
-    });
   }
 
   /**
    * Get LinkedIn credentials
    */
   getLinkedInCredentials() {
-    // Priority: Environment variables > Config file
     if (process.env.LINKEDIN_EMAIL && process.env.LINKEDIN_PASSWORD) {
       return {
         email: process.env.LINKEDIN_EMAIL,
         password: process.env.LINKEDIN_PASSWORD,
       };
     }
-
-    // Try to read from config file (only works in development)
-    if (!this.isProduction) {
-      try {
-        if (fs.existsSync("./linkedin_config.json")) {
-          const config = JSON.parse(
-            fs.readFileSync("./linkedin_config.json", "utf8")
-          );
-          return {
-            email: config.email || "",
-            password: config.password || "",
-          };
-        }
-      } catch (error) {
-        console.error("Error reading config file:", error.message);
+    try {
+      if (fs.existsSync("./linkedin_config.json")) {
+        const config = JSON.parse(
+          fs.readFileSync("./linkedin_config.json", "utf8")
+        );
+        return {
+          email: config.email || "",
+          password: config.password || "",
+        };
       }
-    }
-
+    } catch (error) {}
     return { email: "", password: "" };
   }
 
@@ -1608,34 +1270,26 @@ class LinkedInEmailScraper {
       })),
     };
 
-    // Only save files in development (file system available)
-    if (!this.isProduction) {
-      const filename = `results_${companyName.replace(
-        /\s+/g,
-        "_"
-      )}_${new Date().getTime()}.json`;
-      fs.writeFileSync(filename, JSON.stringify(output, null, 2));
+    const filename = `results_${companyName.replace(
+      /\s+/g,
+      "_"
+    )}_${new Date().getTime()}.json`;
+    fs.writeFileSync(filename, JSON.stringify(output, null, 2));
 
-      console.log(`✅ Combined results saved to: ${filename}`);
+    console.log(`✅ Combined results saved to: ${filename}`);
 
-      // Also save just the successful emails
-      const successfulEmails = emailResults.detailedResults
-        .filter((r) => r.email)
-        .map((r) => r.email);
+    // Also save just the successful emails
+    const successfulEmails = emailResults.detailedResults
+      .filter((r) => r.email)
+      .map((r) => r.email);
 
-      fs.writeFileSync(
-        `emails_${companyName.replace(/\s+/g, "_")}.json`,
-        JSON.stringify(successfulEmails, null, 2)
-      );
-      console.log(
-        `✅ Email list saved to: emails_${companyName.replace(
-          /\s+/g,
-          "_"
-        )}.json`
-      );
-    } else {
-      console.log("⚠️ File saving skipped in production (Vercel)");
-    }
+    fs.writeFileSync(
+      `emails_${companyName.replace(/\s+/g, "_")}.json`,
+      JSON.stringify(successfulEmails, null, 2)
+    );
+    console.log(
+      `✅ Email list saved to: emails_${companyName.replace(/\s+/g, "_")}.json`
+    );
   }
 
   /**
@@ -1651,15 +1305,12 @@ class LinkedInEmailScraper {
     console.log(`🌐 Domain: ${domain}`);
     console.log(`📝 Names from LinkedIn: ${linkedinNames.length}`);
     console.log(`📧 Emails found: ${foundEmails.length}`);
-
-    if (linkedinNames.length > 0) {
-      console.log(
-        `🎯 Success rate: ${(
-          (foundEmails.length / linkedinNames.length) *
-          100
-        ).toFixed(1)}%`
-      );
-    }
+    console.log(
+      `🎯 Success rate: ${(
+        (foundEmails.length / linkedinNames.length) *
+        100
+      ).toFixed(1)}%`
+    );
 
     console.log("\n⏱️  DETAILED TIMING BREAKDOWN:");
     console.log("-".repeat(40));
@@ -1675,25 +1326,23 @@ class LinkedInEmailScraper {
     );
 
     // Calculate percentages
-    if (this.totalProcessingTime > 0) {
-      const linkedinPercentage = (
-        (this.linkedinScrapingTime / this.totalProcessingTime) *
-        100
-      ).toFixed(1);
-      const emailPercentage = (
-        (this.emailFindingTime / this.totalProcessingTime) *
-        100
-      ).toFixed(1);
-      const savingPercentage = (
-        (this.resultsSavingTime / this.totalProcessingTime) *
-        100
-      ).toFixed(1);
+    const linkedinPercentage = (
+      (this.linkedinScrapingTime / this.totalProcessingTime) *
+      100
+    ).toFixed(1);
+    const emailPercentage = (
+      (this.emailFindingTime / this.totalProcessingTime) *
+      100
+    ).toFixed(1);
+    const savingPercentage = (
+      (this.resultsSavingTime / this.totalProcessingTime) *
+      100
+    ).toFixed(1);
 
-      console.log(`\n📊 TIME DISTRIBUTION:`);
-      console.log(`LinkedIn: ${linkedinPercentage}%`);
-      console.log(`Email Finding: ${emailPercentage}%`);
-      console.log(`Saving: ${savingPercentage}%`);
-    }
+    console.log(`\n📊 TIME DISTRIBUTION:`);
+    console.log(`LinkedIn: ${linkedinPercentage}%`);
+    console.log(`Email Finding: ${emailPercentage}%`);
+    console.log(`Saving: ${savingPercentage}%`);
 
     if (foundEmails.length > 0) {
       console.log("\n✅ FOUND EMAILS:");

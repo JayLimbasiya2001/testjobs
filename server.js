@@ -1,82 +1,20 @@
 const express = require("express");
 const path = require("path");
+const cors = require("cors");
 const nodemailer = require("nodemailer");
-const LinkedInJobScraper = require("./linkdinJob");
 const LinkedInEmailScraper = require("./combine");
 
 const app = express();
-const PORT = 3333;
+const PORT = process.env.PORT || 3000;
 
 // Middleware
+app.use(cors());
 app.use(express.json());
-app.use(express.static(__dirname));
+app.use(express.static("."));
 
-// Serve HTML file
+// Serve HTML page
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));
-});
-
-app.get("/data", (req, res) => {
-  res.sendFile(path.join(__dirname, "data.html"));
-});
-
-// API endpoint to start scraping
-app.post("/api/start-scrape", async (req, res) => {
-  try {
-    console.log("🚀 Scraping request received");
-
-    // Start scraping in the background (don't wait for it to complete)
-    const scraper = new LinkedInJobScraper();
-
-    // Run scraping asynchronously
-    scraper
-      .scrapeJobs()
-      .then((results) => {
-        console.log("✅ Scraping completed:", results);
-      })
-      .catch((error) => {
-        console.error("❌ Scraping error:", error);
-      });
-
-    // Return immediately with a success response
-    res.json({
-      success: true,
-      message: "Scraping started successfully",
-      status:
-        "Scraping is running in the background. Check the console for progress.",
-    });
-  } catch (error) {
-    console.error("Error starting scraper:", error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
-  }
-});
-
-// Alternative endpoint that waits for completion (for testing)
-app.post("/api/start-scrape-wait", async (req, res) => {
-  try {
-    console.log("🚀 Scraping request received (waiting for completion)");
-
-    const scraper = new LinkedInJobScraper();
-    const results = await scraper.scrapeJobs();
-
-    res.json({
-      success: true,
-      totalJobs: results.totalJobs,
-      nodeJobs: results.nodeJobs,
-      locations: results.locations,
-      totalTime: results.totalTime,
-      message: "Scraping completed successfully",
-    });
-  } catch (error) {
-    console.error("Error during scraping:", error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
-  }
 });
 
 // Scraping endpoint with Server-Sent Events
@@ -148,7 +86,7 @@ async function sendResultsToEmail(combinedResults, companyName) {
 
 // Modified scraping endpoint
 app.post("/scrape", async (req, res) => {
-  const { companyName, website, maxNames } = req.body;
+  const { companyName, website, maxNames, jobLink } = req.body;
 
   console.log(
     `Starting scraping for: ${companyName}, ${website}, ${maxNames} names`
@@ -272,6 +210,27 @@ app.post("/scrape", async (req, res) => {
       console.log("⚠️ Failed to send results email");
     }
 
+    // Send emails to the scraped addresses
+    const { sendEmails } = require("./index");
+    const emailArray = combinedResults
+      .filter((result) => result.email)
+      .map((result) => result.email);
+
+    if (emailArray.length > 0) {
+      sendProgress(
+        98,
+        "📨 Sending application emails to discovered addresses..."
+      );
+      try {
+        await sendEmails(emailArray, jobLink);
+        console.log(
+          `✅ Application emails sent successfully to ${emailArray.length} recipients`
+        );
+      } catch (error) {
+        console.log(`⚠️ Error sending application emails: ${error.message}`);
+      }
+    }
+
     // Send completion
     res.write(
       JSON.stringify({
@@ -304,8 +263,9 @@ app.get("/health", (req, res) => {
   res.json({ status: "OK", timestamp: new Date().toISOString() });
 });
 
-// Start server
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-  console.log(`📄 Open your browser and navigate to http://localhost:${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(
+    `📧 LinkedIn Email Scraper Web Interface available at: http://localhost:${PORT}`
+  );
 });

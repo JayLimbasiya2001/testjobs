@@ -1,0 +1,27 @@
+{
+  "linkedin": {
+    "searchQuery": "\"software engineer\" OR \"software developer\" OR \"backend engineer\" OR \"backend developer\" OR \"application developer\" OR \"application engineer\" OR \"node\" OR \"full stack\"",
+    "locations": ["Bangalore", "Pune", "Mumbai", "Gurugram", "Ahmedabad"],
+    "experienceLevels": ["2", "3"],
+    "datePosted": "r86400",
+    "maxJobsPerLocation": 500,
+    "excludeRemote": true,
+    "workplaceTypes": ["1"],
+    "delayBetweenJobs": 1500,
+    "navigationTimeout": 90000
+  },
+  "emailScraping": {
+    "maxNamesPerCompany": 50,
+    "searchRoles": []
+  },
+  "parallelProcessing": {
+    "maxConcurrentCompanies": 3
+  },
+  "websiteFinder": {
+    "useGoogleSearch": true,
+    "useLinkedIn": true,
+    "googleSearchQuery": "{companyName} official website",
+    "maxRetries": 2
+  }
+}
+
