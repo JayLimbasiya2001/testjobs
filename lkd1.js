@@ -1080,11 +1080,10 @@ class LinkedInJobScraper {
 
       // Wait for navigation with better handling
       console.log("⏳ Waiting for login to complete...");
-      await this.delay(100000);
+      await this.delay(20000);
 
       // Check for login success
       const loginSuccess = await page.evaluate(() => {
-        console.log("Checking login success...");
         return (
           document.querySelector(
             ".global-nav, .feed-identity-module, [data-test-global-nav]"
@@ -1108,7 +1107,7 @@ class LinkedInJobScraper {
         if (errorMessage) {
           console.log(`❌ Login error: ${errorMessage}`);
         } else {
-          console.log("❌ Login failed - unknown reason", errorMessage);
+          console.log("❌ Login failed - unknown reason");
           // Take screenshot of current state
           await page.screenshot({ path: "login-failed.png", fullPage: true });
           console.log("📸 Failed login state saved as 'login-failed.png'");
