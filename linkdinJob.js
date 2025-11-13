@@ -66,7 +66,7 @@ class LinkedInJobScraper {
     if (this.isProduction && puppeteerCore && chromium) {
       // Production/Vercel: Use puppeteer-core with chromium-min
       console.log("🚀 Launching browser for production (Vercel)...");
-      
+
       const executablePath = await chromium.executablePath(
         "https://github.com/Sparticuz/chromium/releases/download/v131.0.1/chromium-v131.0.1-pack.tar"
       );
@@ -81,7 +81,7 @@ class LinkedInJobScraper {
       // Development: Use regular puppeteer
       console.log("🚀 Launching browser for development...");
       return await puppeteer.launch({
-        headless: false,
+        headless: true,
         args: [
           "--no-sandbox",
           "--disable-setuid-sandbox",
@@ -94,7 +94,9 @@ class LinkedInJobScraper {
       });
     } else if (puppeteerCore) {
       // Fallback: Use puppeteer-core without chromium (may need custom executable path)
-      console.log("⚠️ Using puppeteer-core without chromium (may need executablePath)");
+      console.log(
+        "⚠️ Using puppeteer-core without chromium (may need executablePath)"
+      );
       return await puppeteerCore.launch({
         headless: true,
         args: [
@@ -125,7 +127,11 @@ class LinkedInJobScraper {
       console.log(`📝 Search Query: Software Engineer/Developer/Node.js roles`);
       console.log(`📍 Locations: ${this.locations.join(", ")}`);
       console.log(`⏰ Started at: ${new Date().toLocaleString()}`);
-      console.log(`🌍 Environment: ${this.isProduction ? "Production (Vercel)" : "Development"}\n`);
+      console.log(
+        `🌍 Environment: ${
+          this.isProduction ? "Production (Vercel)" : "Development"
+        }\n`
+      );
 
       const startTime = Date.now();
 
@@ -1046,7 +1052,9 @@ class LinkedInJobScraper {
 
       if (!credentials.email || !credentials.password) {
         console.log("⚠️  No LinkedIn credentials provided");
-        console.log("💡 Set LINKEDIN_EMAIL and LINKEDIN_PASSWORD environment variables");
+        console.log(
+          "💡 Set LINKEDIN_EMAIL and LINKEDIN_PASSWORD environment variables"
+        );
         return false;
       }
 
@@ -1307,7 +1315,9 @@ if (require.main === module) {
       const results = await scraper.scrapeJobs();
       console.log("✅ Scraping completed successfully");
       if (results && !results.error) {
-        console.log(`📊 Results: ${results.totalJobs} total jobs, ${results.totalNodeJobs} Node.js jobs`);
+        console.log(
+          `📊 Results: ${results.totalJobs} total jobs, ${results.totalNodeJobs} Node.js jobs`
+        );
       }
     } catch (error) {
       console.error("❌ Scraping failed:", error);

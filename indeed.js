@@ -12,8 +12,15 @@ class IndeedJobScraper {
     this.navigationTimeout = 90000;
 
     // Search parameters
-    this.searchQuery = "node.js OR nodejs OR node js OR express.js OR backend developer OR software engineer";
-    this.locations = ["Bangalore, Karnataka", "Pune, Maharashtra", "Mumbai, Maharashtra", "Gurugram, Haryana", "Ahmedabad, Gujarat"];
+    this.searchQuery =
+      "node.js OR nodejs OR node js OR express.js OR backend developer OR software engineer";
+    this.locations = [
+      "Bangalore, Karnataka",
+      "Pune, Maharashtra",
+      "Mumbai, Maharashtra",
+      "Gurugram, Haryana",
+      "Ahmedabad, Gujarat",
+    ];
     this.datePosted = "7"; // Last 7 days (Indeed uses: 1 = 24h, 7 = 7 days, 30 = 30 days)
 
     this.allJobs = [];
@@ -47,7 +54,7 @@ class IndeedJobScraper {
 
       // Launch browser
       browser = await puppeteer.launch({
-        headless: false,
+        headless: true,
         args: [
           "--no-sandbox",
           "--disable-setuid-sandbox",
@@ -276,8 +283,7 @@ class IndeedJobScraper {
    * Generate CSV content for Node.js jobs
    */
   generateNodeJsJobsCsv() {
-    const header =
-      "Title,Company,Location,Salary,Posted,Job Type,Job URL\n";
+    const header = "Title,Company,Location,Salary,Posted,Job Type,Job URL\n";
 
     const rows = this.nodeJobs
       .map(
@@ -287,9 +293,9 @@ class IndeedJobScraper {
           ).replace(/"/g, '""')}","${(job.location || "").replace(
             /"/g,
             '""'
-          )}","${(job.salary || "").replace(/"/g, '""')}","${job.postedTime || ""}","${job.jobType || ""}","${
-            job.jobUrl || ""
-          }"`
+          )}","${(job.salary || "").replace(/"/g, '""')}","${
+            job.postedTime || ""
+          }","${job.jobType || ""}","${job.jobUrl || ""}"`
       )
       .join("\n");
 
@@ -321,10 +327,7 @@ class IndeedJobScraper {
       const maxPages = 50;
       const processedJobIds = new Set();
 
-      while (
-        scrapedCount < this.maxJobsPerLocation &&
-        pageNumber < maxPages
-      ) {
+      while (scrapedCount < this.maxJobsPerLocation && pageNumber < maxPages) {
         pageNumber++;
         console.log(`\n📄 Page ${pageNumber} for ${location}...`);
 
@@ -351,7 +354,11 @@ class IndeedJobScraper {
               processedJobIds
             );
 
-            if (jobData && jobData.jobId && !processedJobIds.has(jobData.jobId)) {
+            if (
+              jobData &&
+              jobData.jobId &&
+              !processedJobIds.has(jobData.jobId)
+            ) {
               processedJobIds.add(jobData.jobId);
               this.allJobs.push(jobData);
               scrapedCount++;
@@ -430,30 +437,40 @@ class IndeedJobScraper {
 
       await this.delay(3000);
 
-      const searchSuccess = await page.evaluate((query, loc) => {
-        // Find search input (what)
-        const whatInput = document.querySelector('#text-input-what, input[name="q"], input[id*="text-input-what"]');
-        // Find location input (where)
-        const whereInput = document.querySelector('#text-input-where, input[name="l"], input[id*="text-input-where"]');
+      const searchSuccess = await page.evaluate(
+        (query, loc) => {
+          // Find search input (what)
+          const whatInput = document.querySelector(
+            '#text-input-what, input[name="q"], input[id*="text-input-what"]'
+          );
+          // Find location input (where)
+          const whereInput = document.querySelector(
+            '#text-input-where, input[name="l"], input[id*="text-input-where"]'
+          );
 
-        if (whatInput && whereInput) {
-          whatInput.value = query;
-          whatInput.dispatchEvent(new Event("input", { bubbles: true }));
-          whatInput.dispatchEvent(new Event("change", { bubbles: true }));
+          if (whatInput && whereInput) {
+            whatInput.value = query;
+            whatInput.dispatchEvent(new Event("input", { bubbles: true }));
+            whatInput.dispatchEvent(new Event("change", { bubbles: true }));
 
-          whereInput.value = loc;
-          whereInput.dispatchEvent(new Event("input", { bubbles: true }));
-          whereInput.dispatchEvent(new Event("change", { bubbles: true }));
+            whereInput.value = loc;
+            whereInput.dispatchEvent(new Event("input", { bubbles: true }));
+            whereInput.dispatchEvent(new Event("change", { bubbles: true }));
 
-          // Find and click search button
-          const searchButton = document.querySelector('button[type="submit"], button[id*="whatWhere-button"]');
-          if (searchButton) {
-            searchButton.click();
-            return true;
+            // Find and click search button
+            const searchButton = document.querySelector(
+              'button[type="submit"], button[id*="whatWhere-button"]'
+            );
+            if (searchButton) {
+              searchButton.click();
+              return true;
+            }
           }
-        }
-        return false;
-      }, this.searchQuery, location);
+          return false;
+        },
+        this.searchQuery,
+        location
+      );
 
       if (searchSuccess) {
         await this.delay(5000);
@@ -498,12 +515,12 @@ class IndeedJobScraper {
           const dateButtons = document.querySelectorAll(
             'button[data-testid="filter-dateposted"], button[id*="filter-dateposted"], a[data-testid="filter-dateposted"]'
           );
-          
+
           if (dateButtons.length > 0) {
             dateButtons[0].click();
             return true;
           }
-          
+
           // Alternative: Look for filter menu
           const filterMenus = document.querySelectorAll(
             'button[aria-label*="Date posted"], button[id*="filter-date"]'
@@ -512,7 +529,7 @@ class IndeedJobScraper {
             button.click();
             return true;
           }
-          
+
           return false;
         });
 
@@ -578,8 +595,8 @@ class IndeedJobScraper {
     return await page.evaluate(() => {
       // Try multiple selectors for job cards
       const selectors = [
-        'div[data-jk]',
-        'a[data-jk]',
+        "div[data-jk]",
+        "a[data-jk]",
         'div[class*="job_seen_beacon"]',
         'div[class*="slider_item"]',
         '[data-testid="slider_item"]',
@@ -604,173 +621,196 @@ class IndeedJobScraper {
   async scrapeJobCard(page, index, location, processedJobIds) {
     try {
       // Get job data from the card without clicking (Indeed shows details in card)
-      const jobData = await page.evaluate((idx, loc) => {
-        const data = {
-          location: loc,
-          scrapedAt: new Date().toISOString(),
-        };
+      const jobData = await page.evaluate(
+        (idx, loc) => {
+          const data = {
+            location: loc,
+            scrapedAt: new Date().toISOString(),
+          };
 
-        // Try multiple selectors for job cards
-        const selectors = [
-          'div[data-jk]',
-          'a[data-jk]',
-          'div[class*="job_seen_beacon"]',
-          'div[class*="slider_item"]',
-          '[data-testid="slider_item"]',
-        ];
+          // Try multiple selectors for job cards
+          const selectors = [
+            "div[data-jk]",
+            "a[data-jk]",
+            'div[class*="job_seen_beacon"]',
+            'div[class*="slider_item"]',
+            '[data-testid="slider_item"]',
+          ];
 
-        let card = null;
-        for (const selector of selectors) {
-          const cards = document.querySelectorAll(selector);
-          if (cards[idx]) {
-            card = cards[idx];
-            break;
-          }
-        }
-
-        if (!card) {
-          return null;
-        }
-
-        // Scroll card into view
-        card.scrollIntoView({ behavior: "smooth", block: "center" });
-
-        // Extract Job ID
-        const jobId = card.getAttribute("data-jk") || 
-                     card.querySelector('[data-jk]')?.getAttribute("data-jk") ||
-                     card.closest('[data-jk]')?.getAttribute("data-jk");
-        
-        if (jobId) {
-          data.jobId = jobId;
-          data.jobUrl = `https://www.indeed.com/viewjob?jk=${jobId}`;
-        }
-
-        // Extract Job Title
-        const titleSelectors = [
-          'h2[class*="jobTitle"]',
-          'h2 a[class*="jobTitle"]',
-          'a[class*="jobTitle"]',
-          'span[title]',
-          'h2',
-        ];
-
-        for (const selector of titleSelectors) {
-          const element = card.querySelector(selector);
-          if (element) {
-            const title = element.getAttribute("title") || element.textContent?.trim();
-            if (title && title.length > 0) {
-              data.title = title;
+          let card = null;
+          for (const selector of selectors) {
+            const cards = document.querySelectorAll(selector);
+            if (cards[idx]) {
+              card = cards[idx];
               break;
             }
           }
-        }
 
-        // Extract Company Name
-        const companySelectors = [
-          'span[class*="companyName"]',
-          'a[class*="companyName"]',
-          'div[class*="companyName"]',
-          'span[data-testid="company-name"]',
-        ];
-
-        for (const selector of companySelectors) {
-          const element = card.querySelector(selector);
-          if (element && element.textContent?.trim()) {
-            data.company = element.textContent.trim();
-            break;
+          if (!card) {
+            return null;
           }
-        }
 
-        // Extract Location
-        const locationSelectors = [
-          'div[class*="companyLocation"]',
-          'div[data-testid="text-location"]',
-          'div[class*="location"]',
-        ];
+          // Scroll card into view
+          card.scrollIntoView({ behavior: "smooth", block: "center" });
 
-        for (const selector of locationSelectors) {
-          const element = card.querySelector(selector);
-          if (element && element.textContent?.trim()) {
-            data.location = element.textContent.trim();
-            break;
+          // Extract Job ID
+          const jobId =
+            card.getAttribute("data-jk") ||
+            card.querySelector("[data-jk]")?.getAttribute("data-jk") ||
+            card.closest("[data-jk]")?.getAttribute("data-jk");
+
+          if (jobId) {
+            data.jobId = jobId;
+            data.jobUrl = `https://www.indeed.com/viewjob?jk=${jobId}`;
           }
-        }
 
-        // Extract Salary
-        const salarySelectors = [
-          'span[class*="salary"]',
-          'div[class*="salary"]',
-          'div[data-testid="attribute_snippet_testid"]',
-        ];
+          // Extract Job Title
+          const titleSelectors = [
+            'h2[class*="jobTitle"]',
+            'h2 a[class*="jobTitle"]',
+            'a[class*="jobTitle"]',
+            "span[title]",
+            "h2",
+          ];
 
-        for (const selector of salarySelectors) {
-          const element = card.querySelector(selector);
-          if (element) {
-            const salaryText = element.textContent?.trim();
-            if (salaryText && (salaryText.includes("$") || salaryText.includes("₹") || salaryText.includes("salary"))) {
-              data.salary = salaryText;
+          for (const selector of titleSelectors) {
+            const element = card.querySelector(selector);
+            if (element) {
+              const title =
+                element.getAttribute("title") || element.textContent?.trim();
+              if (title && title.length > 0) {
+                data.title = title;
+                break;
+              }
+            }
+          }
+
+          // Extract Company Name
+          const companySelectors = [
+            'span[class*="companyName"]',
+            'a[class*="companyName"]',
+            'div[class*="companyName"]',
+            'span[data-testid="company-name"]',
+          ];
+
+          for (const selector of companySelectors) {
+            const element = card.querySelector(selector);
+            if (element && element.textContent?.trim()) {
+              data.company = element.textContent.trim();
               break;
             }
           }
-        }
 
-        // Extract Posted Time
-        const postedSelectors = [
-          'span[class*="date"]',
-          'span[class*="posted"]',
-          'div[class*="date"]',
-        ];
+          // Extract Location
+          const locationSelectors = [
+            'div[class*="companyLocation"]',
+            'div[data-testid="text-location"]',
+            'div[class*="location"]',
+          ];
 
-        for (const selector of postedSelectors) {
-          const element = card.querySelector(selector);
-          if (element) {
-            const postedText = element.textContent?.trim();
-            if (postedText && (postedText.includes("day") || postedText.includes("hour") || postedText.includes("just posted"))) {
-              data.postedTime = postedText;
+          for (const selector of locationSelectors) {
+            const element = card.querySelector(selector);
+            if (element && element.textContent?.trim()) {
+              data.location = element.textContent.trim();
               break;
             }
           }
-        }
 
-        // Extract Job Type (Full-time, Part-time, etc.)
-        const jobTypeElements = card.querySelectorAll('div[class*="attribute"], span[class*="attribute"]');
-        for (const element of jobTypeElements) {
-          const text = element.textContent?.toLowerCase() || "";
-          if (text.includes("full-time") || text.includes("part-time") || text.includes("contract") || text.includes("temporary")) {
-            data.jobType = element.textContent.trim();
-            break;
+          // Extract Salary
+          const salarySelectors = [
+            'span[class*="salary"]',
+            'div[class*="salary"]',
+            'div[data-testid="attribute_snippet_testid"]',
+          ];
+
+          for (const selector of salarySelectors) {
+            const element = card.querySelector(selector);
+            if (element) {
+              const salaryText = element.textContent?.trim();
+              if (
+                salaryText &&
+                (salaryText.includes("$") ||
+                  salaryText.includes("₹") ||
+                  salaryText.includes("salary"))
+              ) {
+                data.salary = salaryText;
+                break;
+              }
+            }
           }
-        }
 
-        // Extract Job Description snippet
-        const descriptionSelectors = [
-          'div[class*="summary"]',
-          'div[class*="snippet"]',
-          'div[class*="job-snippet"]',
-        ];
+          // Extract Posted Time
+          const postedSelectors = [
+            'span[class*="date"]',
+            'span[class*="posted"]',
+            'div[class*="date"]',
+          ];
 
-        for (const selector of descriptionSelectors) {
-          const element = card.querySelector(selector);
-          if (element && element.textContent?.trim()) {
-            data.description = element.textContent.trim().substring(0, 1000);
-            break;
+          for (const selector of postedSelectors) {
+            const element = card.querySelector(selector);
+            if (element) {
+              const postedText = element.textContent?.trim();
+              if (
+                postedText &&
+                (postedText.includes("day") ||
+                  postedText.includes("hour") ||
+                  postedText.includes("just posted"))
+              ) {
+                data.postedTime = postedText;
+                break;
+              }
+            }
           }
-        }
 
-        return data;
-      }, index, location);
+          // Extract Job Type (Full-time, Part-time, etc.)
+          const jobTypeElements = card.querySelectorAll(
+            'div[class*="attribute"], span[class*="attribute"]'
+          );
+          for (const element of jobTypeElements) {
+            const text = element.textContent?.toLowerCase() || "";
+            if (
+              text.includes("full-time") ||
+              text.includes("part-time") ||
+              text.includes("contract") ||
+              text.includes("temporary")
+            ) {
+              data.jobType = element.textContent.trim();
+              break;
+            }
+          }
+
+          // Extract Job Description snippet
+          const descriptionSelectors = [
+            'div[class*="summary"]',
+            'div[class*="snippet"]',
+            'div[class*="job-snippet"]',
+          ];
+
+          for (const selector of descriptionSelectors) {
+            const element = card.querySelector(selector);
+            if (element && element.textContent?.trim()) {
+              data.description = element.textContent.trim().substring(0, 1000);
+              break;
+            }
+          }
+
+          return data;
+        },
+        index,
+        location
+      );
 
       // Validate and return job data
       if (jobData && jobData.title && jobData.company && jobData.jobId) {
         if (!processedJobIds.has(jobData.jobId)) {
           // Try to get more details by clicking on the job
           await this.delay(1000);
-          
+
           try {
             const moreDetails = await page.evaluate((idx) => {
               const selectors = [
-                'div[data-jk]',
-                'a[data-jk]',
+                "div[data-jk]",
+                "a[data-jk]",
                 'div[class*="job_seen_beacon"]',
                 '[data-testid="slider_item"]',
               ];
@@ -786,9 +826,10 @@ class IndeedJobScraper {
 
               if (!card) return null;
 
-              const link = card.querySelector('a[href*="/viewjob"]') || 
-                          card.querySelector('a[data-jk]') ||
-                          card.closest('a[href*="/viewjob"]');
+              const link =
+                card.querySelector('a[href*="/viewjob"]') ||
+                card.querySelector("a[data-jk]") ||
+                card.closest('a[href*="/viewjob"]');
 
               if (link) {
                 link.click();
@@ -814,7 +855,9 @@ class IndeedJobScraper {
                 for (const selector of descriptionSelectors) {
                   const element = document.querySelector(selector);
                   if (element && element.textContent?.trim()) {
-                    details.description = element.textContent.trim().substring(0, 3000);
+                    details.description = element.textContent
+                      .trim()
+                      .substring(0, 3000);
                     break;
                   }
                 }
@@ -832,7 +875,9 @@ class IndeedJobScraper {
             }
           } catch (error) {
             // If we can't get more details, continue with what we have
-            console.log(`  ⚠️ Could not get additional details for job ${index}`);
+            console.log(
+              `  ⚠️ Could not get additional details for job ${index}`
+            );
           }
 
           return jobData;
@@ -852,7 +897,9 @@ class IndeedJobScraper {
   isNodeJob(jobData) {
     if (!jobData) return false;
 
-    const searchText = `${jobData.title || ""} ${jobData.description || ""}`.toLowerCase();
+    const searchText = `${jobData.title || ""} ${
+      jobData.description || ""
+    }`.toLowerCase();
 
     const nodeKeywords = [
       "node.js",
@@ -885,7 +932,10 @@ class IndeedJobScraper {
           'a[aria-label="Next Page"], a[aria-label="Next"], a[data-testid="pagination-page-next"]'
         );
 
-        if (nextButtons.length > 0 && !nextButtons[0].classList.contains("disabled")) {
+        if (
+          nextButtons.length > 0 &&
+          !nextButtons[0].classList.contains("disabled")
+        ) {
           nextButtons[0].click();
           return true;
         }
@@ -894,11 +944,12 @@ class IndeedJobScraper {
         const paginationLinks = document.querySelectorAll(
           'a[data-testid*="pagination"], a[class*="pagination"]'
         );
-        
+
         for (const link of paginationLinks) {
           const text = link.textContent?.toLowerCase() || "";
-          const ariaLabel = link.getAttribute("aria-label")?.toLowerCase() || "";
-          
+          const ariaLabel =
+            link.getAttribute("aria-label")?.toLowerCase() || "";
+
           if (
             (text.includes("next") || ariaLabel.includes("next")) &&
             !link.classList.contains("disabled")
@@ -909,13 +960,16 @@ class IndeedJobScraper {
         }
 
         // Try to find and click the next page number
-        const currentPage = document.querySelector('b[class*="pagination"]') || 
-                           document.querySelector('span[class*="pagination"]');
-        
+        const currentPage =
+          document.querySelector('b[class*="pagination"]') ||
+          document.querySelector('span[class*="pagination"]');
+
         if (currentPage) {
           const currentPageNum = parseInt(currentPage.textContent) || 1;
-          const nextPageLink = document.querySelector(`a[aria-label="${currentPageNum + 1}"]`);
-          
+          const nextPageLink = document.querySelector(
+            `a[aria-label="${currentPageNum + 1}"]`
+          );
+
           if (nextPageLink) {
             nextPageLink.click();
             return true;
@@ -1026,9 +1080,9 @@ class IndeedJobScraper {
             ).replace(/"/g, '""')}","${(job.location || "").replace(
               /"/g,
               '""'
-            )}","${(job.salary || "").replace(/"/g, '""')}","${job.postedTime || ""}","${job.jobType || ""}","${
-              job.jobUrl || ""
-            }"`
+            )}","${(job.salary || "").replace(/"/g, '""')}","${
+              job.postedTime || ""
+            }","${job.jobType || ""}","${job.jobUrl || ""}"`
         )
         .join("\n");
 
@@ -1049,9 +1103,9 @@ class IndeedJobScraper {
             ).replace(/"/g, '""')}","${(job.location || "").replace(
               /"/g,
               '""'
-            )}","${(job.salary || "").replace(/"/g, '""')}","${job.postedTime || ""}","${job.jobType || ""}","${
-              job.jobUrl || ""
-            }"`
+            )}","${(job.salary || "").replace(/"/g, '""')}","${
+              job.postedTime || ""
+            }","${job.jobType || ""}","${job.jobUrl || ""}"`
         )
         .join("\n");
 

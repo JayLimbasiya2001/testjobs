@@ -18,7 +18,7 @@ class AutomationWorkflow {
         pass: "mjsg ikgq yokl bmew",
       },
     };
-    
+
     // Load configuration from file
     this.loadConfig();
   }
@@ -32,11 +32,18 @@ class AutomationWorkflow {
         const config = JSON.parse(
           fs.readFileSync("./automation_config.json", "utf8")
         );
-        
+
         // LinkedIn settings
-        this.searchQuery = config.linkedin?.searchQuery || 
+        this.searchQuery =
+          config.linkedin?.searchQuery ||
           '"software engineer" OR "software developer" OR "backend engineer" OR "backend developer" OR "application developer" OR "application engineer" OR "node" OR "full stack"';
-        this.locations = config.linkedin?.locations || ["Bangalore", "Pune", "Mumbai", "Gurugram", "Ahmedabad"];
+        this.locations = config.linkedin?.locations || [
+          "Bangalore",
+          "Pune",
+          "Mumbai",
+          "Gurugram",
+          "Ahmedabad",
+        ];
         this.experienceLevels = config.linkedin?.experienceLevels || ["2", "3"];
         this.datePosted = config.linkedin?.datePosted || "r86400";
         this.maxJobsPerLocation = config.linkedin?.maxJobsPerLocation || 500;
@@ -44,20 +51,28 @@ class AutomationWorkflow {
         this.navigationTimeout = config.linkedin?.navigationTimeout || 90000;
         this.excludeRemote = config.linkedin?.excludeRemote !== false; // Default true
         this.workplaceTypes = config.linkedin?.workplaceTypes || ["1"]; // 1=On-site, 2=Remote, 3=Hybrid
-        
+
         // Email scraping settings
-        this.maxNamesPerCompany = config.emailScraping?.maxNamesPerCompany || 50;
-        this.searchRoles = config.emailScraping?.searchRoles || ["hr", "software engineer", "software developer"];
-        
+        this.maxNamesPerCompany =
+          config.emailScraping?.maxNamesPerCompany || 50;
+        this.searchRoles = config.emailScraping?.searchRoles || [
+          "hr",
+          "software engineer",
+          "software developer",
+        ];
+
         // Parallel processing settings
-        this.maxConcurrentCompanies = config.parallelProcessing?.maxConcurrentCompanies || 3;
-        
+        this.maxConcurrentCompanies =
+          config.parallelProcessing?.maxConcurrentCompanies || 3;
+
         // Website finder settings
         this.useGoogleSearch = config.websiteFinder?.useGoogleSearch !== false; // Default true
         this.useLinkedIn = config.websiteFinder?.useLinkedIn !== false; // Default true
-        this.googleSearchQuery = config.websiteFinder?.googleSearchQuery || "{companyName} official website";
+        this.googleSearchQuery =
+          config.websiteFinder?.googleSearchQuery ||
+          "{companyName} official website";
         this.maxRetries = config.websiteFinder?.maxRetries || 2;
-        
+
         console.log("✅ Configuration loaded from automation_config.json");
       } else {
         // Use defaults if config file doesn't exist
@@ -106,16 +121,18 @@ class AutomationWorkflow {
 
     try {
       // Step 1: Scrape Node.js jobs and process companies in parallel
-      console.log("📋 STEP 1: Scraping Node.js jobs and processing companies in parallel...");
+      console.log(
+        "📋 STEP 1: Scraping Node.js jobs and processing companies in parallel..."
+      );
       console.log("-".repeat(70));
-      
+
       await this.scrapeNodeJsJobsAndProcessParallel();
-      
+
       // Wait for all company processing to complete
       console.log("\n⏳ Waiting for all company processing to complete...");
       const allPromises = Array.from(this.companyProcessingPromises.values());
       await Promise.allSettled(allPromises);
-      
+
       console.log(`✅ Found ${this.nodeJobs.length} Node.js jobs`);
       console.log(`✅ Processed ${this.allCompanyResults.length} companies\n`);
 
@@ -126,7 +143,7 @@ class AutomationWorkflow {
 
       const endTime = Date.now();
       const totalTime = ((endTime - startTime) / 1000).toFixed(2);
-      
+
       console.log("\n" + "=".repeat(70));
       console.log("🎉 AUTOMATION COMPLETE!");
       console.log("=".repeat(70));
@@ -135,7 +152,6 @@ class AutomationWorkflow {
       console.log(`🏢 Companies Processed: ${this.allCompanyResults.length}`);
       console.log(`📧 Total Emails Found: ${this.getTotalEmailsCount()}`);
       console.log("=".repeat(70));
-
     } catch (error) {
       console.error("💥 Error in automation workflow:", error);
     }
@@ -152,7 +168,7 @@ class AutomationWorkflow {
 
     try {
       browser = await puppeteer.launch({
-        headless: false,
+        headless: true,
         args: [
           "--no-sandbox",
           "--disable-setuid-sandbox",
@@ -185,7 +201,7 @@ class AutomationWorkflow {
       // Search jobs for each location
       for (const location of this.locations) {
         console.log(`\n📍 Searching jobs in: ${location}`);
-        
+
         const searchSuccess = await this.performSearch(page, location);
         if (!searchSuccess) {
           console.log(`❌ Failed to search for jobs in ${location}`);
@@ -222,13 +238,15 @@ class AutomationWorkflow {
 
               if (jobData && !processedJobIds.has(jobData.jobId)) {
                 processedJobIds.add(jobData.jobId);
-                
+
                 // Filter out remote jobs if excludeRemote is enabled
                 if (this.excludeRemote && this.isRemoteJob(jobData)) {
-                  console.log(`  ⏭️  Skipping remote job: ${jobData.title} at ${jobData.company}`);
+                  console.log(
+                    `  ⏭️  Skipping remote job: ${jobData.title} at ${jobData.company}`
+                  );
                   continue;
                 }
-                
+
                 if (this.isNodeJob(jobData)) {
                   this.nodeJobs.push(jobData);
                   scrapedCount++;
@@ -237,7 +255,10 @@ class AutomationWorkflow {
                   );
 
                   // Process company immediately in parallel (don't wait)
-                  if (jobData.company && !this.processedCompanies.has(jobData.company)) {
+                  if (
+                    jobData.company &&
+                    !this.processedCompanies.has(jobData.company)
+                  ) {
                     // Add to company map
                     if (!companyMap.has(jobData.company)) {
                       companyMap.set(jobData.company, {
@@ -253,8 +274,13 @@ class AutomationWorkflow {
                     });
 
                     // Start processing company in parallel (fire and forget)
-                    this.processCompanyInParallel(companyMap.get(jobData.company));
-                  } else if (jobData.company && companyMap.has(jobData.company)) {
+                    this.processCompanyInParallel(
+                      companyMap.get(jobData.company)
+                    );
+                  } else if (
+                    jobData.company &&
+                    companyMap.has(jobData.company)
+                  ) {
                     // Add job to existing company
                     companyMap.get(jobData.company).jobs.push({
                       title: jobData.title,
@@ -281,8 +307,10 @@ class AutomationWorkflow {
           await this.delay(3000);
         }
 
-        console.log(`  ✅ Completed ${location}: ${scrapedCount} Node.js jobs found`);
-        
+        console.log(
+          `  ✅ Completed ${location}: ${scrapedCount} Node.js jobs found`
+        );
+
         if (this.locations.indexOf(location) < this.locations.length - 1) {
           await this.delay(5000);
         }
@@ -308,33 +336,43 @@ class AutomationWorkflow {
 
     // Mark as processing
     this.processedCompanies.add(company.name);
-    
+
     const processingPromise = (async () => {
       try {
         console.log(`\n🏢 [PARALLEL] Starting processing: ${company.name}`);
-        
+
         // Step 1: Find company website
         console.log(`  🌐 [${company.name}] Finding website...`);
         const website = await this.findCompanyWebsite(company.name);
-        
+
         if (!website) {
-          console.log(`  ⚠️  [${company.name}] Could not find website, skipping...`);
+          console.log(
+            `  ⚠️  [${company.name}] Could not find website, skipping...`
+          );
           this.processedCompanies.delete(company.name); // Allow retry
           return;
         }
-        
+
         console.log(`  ✅ [${company.name}] Found website: ${website}`);
 
         // Step 2: Find people from company People tab
-        console.log(`  👥 [${company.name}] Finding people from LinkedIn company page (People tab)...`);
+        console.log(
+          `  👥 [${company.name}] Finding people from LinkedIn company page (People tab)...`
+        );
         if (this.searchRoles.length > 0) {
-          console.log(`  🎯 [${company.name}] Filtering by roles: ${this.searchRoles.join(", ")}`);
+          console.log(
+            `  🎯 [${company.name}] Filtering by roles: ${this.searchRoles.join(
+              ", "
+            )}`
+          );
         } else {
-          console.log(`  🎯 [${company.name}] No role filter - getting all people`);
+          console.log(
+            `  🎯 [${company.name}] No role filter - getting all people`
+          );
         }
-        
+
         const emailScraper = new LinkedInEmailScraper();
-        
+
         // Get people from company page -> Navigate to People tab -> Extract names
         // This uses the previous logic: find company page -> click People tab -> scrape names
         const people = await emailScraper.getPeopleFromCompany(
@@ -342,18 +380,25 @@ class AutomationWorkflow {
           this.maxNamesPerCompany,
           this.searchRoles
         );
-        
+
         if (!people || people.length === 0) {
-          console.log(`  ⚠️  [${company.name}] No people found from People tab`);
+          console.log(
+            `  ⚠️  [${company.name}] No people found from People tab`
+          );
           return;
         }
 
-        console.log(`  ✅ [${company.name}] Found ${people.length} people from People tab, starting email discovery...`);
-        
+        console.log(
+          `  ✅ [${company.name}] Found ${people.length} people from People tab, starting email discovery...`
+        );
+
         // Step 3: Find emails for the people found
 
         // Find emails for all people (this will process in parallel batches internally)
-        const emailResults = await emailScraper.findEmailsForNames(people, website);
+        const emailResults = await emailScraper.findEmailsForNames(
+          people,
+          website
+        );
 
         // Save results
         if (emailResults && emailResults.detailedResults) {
@@ -364,10 +409,11 @@ class AutomationWorkflow {
             linkedinNames: people,
             emailResults: emailResults,
           });
-          
-          console.log(`  ✅ [${company.name}] Complete: ${people.length} names, ${emailResults.emailArray.length} emails`);
-        }
 
+          console.log(
+            `  ✅ [${company.name}] Complete: ${people.length} names, ${emailResults.emailArray.length} emails`
+          );
+        }
       } catch (error) {
         console.error(`  ❌ [${company.name}] Error:`, error.message);
         this.processedCompanies.delete(company.name); // Allow retry
@@ -376,7 +422,7 @@ class AutomationWorkflow {
 
     // Store promise for tracking
     this.companyProcessingPromises.set(company.name, processingPromise);
-    
+
     // Don't await - let it run in parallel
     return processingPromise;
   }
@@ -386,7 +432,7 @@ class AutomationWorkflow {
    */
   async findCompanyWebsite(companyName) {
     let website = null;
-    
+
     // Try Google search first if enabled
     if (this.useGoogleSearch) {
       console.log(`  🔍 [${companyName}] Trying Google search...`);
@@ -396,7 +442,7 @@ class AutomationWorkflow {
         return website;
       }
     }
-    
+
     // Try LinkedIn if enabled and Google didn't work
     if (this.useLinkedIn && !website) {
       console.log(`  🔍 [${companyName}] Trying LinkedIn...`);
@@ -406,17 +452,21 @@ class AutomationWorkflow {
         return website;
       }
     }
-    
+
     // If still not found, try Google again with different query
     if (!website && this.useGoogleSearch) {
-      console.log(`  🔍 [${companyName}] Trying Google with different query...`);
+      console.log(
+        `  🔍 [${companyName}] Trying Google with different query...`
+      );
       website = await this.findWebsiteViaGoogle(companyName, true);
       if (website) {
-        console.log(`  ✅ [${companyName}] Found via Google (retry): ${website}`);
+        console.log(
+          `  ✅ [${companyName}] Found via Google (retry): ${website}`
+        );
         return website;
       }
     }
-    
+
     console.log(`  ❌ [${companyName}] Website not found`);
     return null;
   }
@@ -442,12 +492,14 @@ class AutomationWorkflow {
       await this.setStealthMode(page);
 
       // Build search query
-      let searchQuery = useAlternativeQuery 
-        ? `${companyName} company website` 
+      let searchQuery = useAlternativeQuery
+        ? `${companyName} company website`
         : this.googleSearchQuery.replace("{companyName}", companyName);
-      
-      const searchUrl = `${this.googleSearchURL}?q=${encodeURIComponent(searchQuery)}`;
-      
+
+      const searchUrl = `${this.googleSearchURL}?q=${encodeURIComponent(
+        searchQuery
+      )}`;
+
       await page.goto(searchUrl, {
         waitUntil: "domcontentloaded",
         timeout: 30000,
@@ -458,13 +510,16 @@ class AutomationWorkflow {
       // Extract website from Google search results
       const website = await page.evaluate(() => {
         // Strategy 1: Look for official website in search results
-        const resultLinks = document.querySelectorAll('div[data-ved] a[href^="http"]');
-        
+        const resultLinks = document.querySelectorAll(
+          'div[data-ved] a[href^="http"]'
+        );
+
         for (const link of resultLinks) {
           const href = link.getAttribute("href") || "";
           const text = link.textContent?.toLowerCase() || "";
-          const parentText = link.closest("div")?.textContent?.toLowerCase() || "";
-          
+          const parentText =
+            link.closest("div")?.textContent?.toLowerCase() || "";
+
           // Skip Google and other known sites
           if (
             href.includes("google.com") ||
@@ -478,19 +533,19 @@ class AutomationWorkflow {
           ) {
             continue;
           }
-          
+
           // Look for official website indicators
           if (
             href.startsWith("http") &&
-            (text.includes("official") || 
-             text.includes("website") || 
-             parentText.includes("official website") ||
-             parentText.includes("www.") ||
-             href.match(/^https?:\/\/(www\.)?[a-zA-Z0-9-]+\.[a-zA-Z]{2,}/))
+            (text.includes("official") ||
+              text.includes("website") ||
+              parentText.includes("official website") ||
+              parentText.includes("www.") ||
+              href.match(/^https?:\/\/(www\.)?[a-zA-Z0-9-]+\.[a-zA-Z]{2,}/))
           ) {
             // Extract clean URL
             let cleanUrl = href;
-            
+
             // Handle Google redirect URLs
             if (href.includes("/url?q=")) {
               const urlMatch = href.match(/\/url\?q=([^&]+)/);
@@ -498,18 +553,24 @@ class AutomationWorkflow {
                 cleanUrl = decodeURIComponent(urlMatch[1]);
               }
             }
-            
+
             // Validate URL format
-            if (cleanUrl.match(/^https?:\/\/(www\.)?[a-zA-Z0-9-]+\.[a-zA-Z]{2,}/)) {
+            if (
+              cleanUrl.match(/^https?:\/\/(www\.)?[a-zA-Z0-9-]+\.[a-zA-Z]{2,}/)
+            ) {
               return cleanUrl;
             }
           }
         }
-        
+
         // Strategy 2: Look in "About" section or featured snippet
-        const aboutSection = document.querySelector('[data-ved] h3, .g h3, .yuRUbf a');
+        const aboutSection = document.querySelector(
+          "[data-ved] h3, .g h3, .yuRUbf a"
+        );
         if (aboutSection) {
-          const links = aboutSection.closest("div")?.querySelectorAll('a[href^="http"]') || [];
+          const links =
+            aboutSection.closest("div")?.querySelectorAll('a[href^="http"]') ||
+            [];
           for (const link of links) {
             const href = link.getAttribute("href") || "";
             if (
@@ -529,9 +590,11 @@ class AutomationWorkflow {
             }
           }
         }
-        
+
         // Strategy 3: Get first valid result that's not a known site
-        const allResultLinks = document.querySelectorAll('div[data-ved] a[href^="http"]');
+        const allResultLinks = document.querySelectorAll(
+          'div[data-ved] a[href^="http"]'
+        );
         for (const link of allResultLinks) {
           const href = link.getAttribute("href") || "";
           if (
@@ -554,7 +617,7 @@ class AutomationWorkflow {
             return cleanUrl;
           }
         }
-        
+
         return null;
       });
 
@@ -571,7 +634,10 @@ class AutomationWorkflow {
 
       return null;
     } catch (error) {
-      console.error(`Error finding website via Google for ${companyName}:`, error.message);
+      console.error(
+        `Error finding website via Google for ${companyName}:`,
+        error.message
+      );
       if (browser) {
         await browser.close();
       }
@@ -603,7 +669,9 @@ class AutomationWorkflow {
       await this.linkedinLogin(page);
 
       // Search for company
-      const searchUrl = `${this.baseURL}/search/results/all/?keywords=${encodeURIComponent(companyName)}`;
+      const searchUrl = `${
+        this.baseURL
+      }/search/results/all/?keywords=${encodeURIComponent(companyName)}`;
       await page.goto(searchUrl, {
         waitUntil: "domcontentloaded",
         timeout: 30000,
@@ -624,9 +692,9 @@ class AutomationWorkflow {
           for (const element of elements) {
             const href = element.getAttribute("href") || "";
             const text = element.textContent?.toLowerCase() || "";
-            
+
             if (
-              href.includes("/company/") && 
+              href.includes("/company/") &&
               !href.includes("/search/") &&
               !text.includes("see all")
             ) {
@@ -649,7 +717,9 @@ class AutomationWorkflow {
       // Improved website extraction with multiple strategies
       const website = await page.evaluate(() => {
         // Strategy 1: Look for website in org-top-card section (most common)
-        const orgTopCard = document.querySelector(".org-top-card-summary-info-list");
+        const orgTopCard = document.querySelector(
+          ".org-top-card-summary-info-list"
+        );
         if (orgTopCard) {
           const links = orgTopCard.querySelectorAll('a[href^="http"]');
           for (const link of links) {
@@ -668,7 +738,9 @@ class AutomationWorkflow {
         }
 
         // Strategy 2: Look for website in org-about-us-organization-description
-        const aboutSection = document.querySelector(".org-about-us-organization-description");
+        const aboutSection = document.querySelector(
+          ".org-about-us-organization-description"
+        );
         if (aboutSection) {
           const links = aboutSection.querySelectorAll('a[href^="http"]');
           for (const link of links) {
@@ -680,7 +752,7 @@ class AutomationWorkflow {
               !href.includes("twitter.com") &&
               !href.includes("instagram.com") &&
               !href.includes("youtube.com") &&
-              (href.match(/^https?:\/\/(www\.)?[a-zA-Z0-9-]+\.[a-zA-Z]{2,}/))
+              href.match(/^https?:\/\/(www\.)?[a-zA-Z0-9-]+\.[a-zA-Z]{2,}/)
             ) {
               return href;
             }
@@ -688,7 +760,9 @@ class AutomationWorkflow {
         }
 
         // Strategy 3: Look in org-page-details section
-        const detailsSection = document.querySelector(".org-page-details__definition-text");
+        const detailsSection = document.querySelector(
+          ".org-page-details__definition-text"
+        );
         if (detailsSection) {
           const links = detailsSection.querySelectorAll('a[href^="http"]');
           for (const link of links) {
@@ -699,7 +773,9 @@ class AutomationWorkflow {
               !href.includes("linkedin.com") &&
               !href.includes("facebook.com") &&
               !href.includes("twitter.com") &&
-              (text.includes("website") || text.includes("www") || href.includes("www"))
+              (text.includes("website") ||
+                text.includes("www") ||
+                href.includes("www"))
             ) {
               return href;
             }
@@ -707,7 +783,9 @@ class AutomationWorkflow {
         }
 
         // Strategy 4: Look for website button/link in top card
-        const websiteButton = document.querySelector('a[data-control-name="topcard_website"]');
+        const websiteButton = document.querySelector(
+          'a[data-control-name="topcard_website"]'
+        );
         if (websiteButton) {
           const href = websiteButton.getAttribute("href") || "";
           if (href.startsWith("http") && !href.includes("linkedin.com")) {
@@ -718,12 +796,13 @@ class AutomationWorkflow {
         // Strategy 5: Search all external links on the page (more comprehensive)
         const allExternalLinks = document.querySelectorAll('a[href^="http"]');
         const websiteCandidates = [];
-        
+
         for (const link of allExternalLinks) {
           const href = link.getAttribute("href") || "";
           const text = link.textContent?.toLowerCase().trim() || "";
-          const ariaLabel = link.getAttribute("aria-label")?.toLowerCase() || "";
-          
+          const ariaLabel =
+            link.getAttribute("aria-label")?.toLowerCase() || "";
+
           if (
             href.startsWith("http") &&
             !href.includes("linkedin.com") &&
@@ -736,11 +815,15 @@ class AutomationWorkflow {
             href.match(/^https?:\/\/(www\.)?[a-zA-Z0-9-]+\.[a-zA-Z]{2,}/)
           ) {
             // Prioritize links with "website" or "www" in text
-            const priority = 
-              (text.includes("website") || ariaLabel.includes("website")) ? 3 :
-              (text.includes("www") || href.includes("www")) ? 2 :
-              (text.length < 30) ? 1 : 0;
-            
+            const priority =
+              text.includes("website") || ariaLabel.includes("website")
+                ? 3
+                : text.includes("www") || href.includes("www")
+                ? 2
+                : text.length < 30
+                ? 1
+                : 0;
+
             websiteCandidates.push({ href, priority });
           }
         }
@@ -763,14 +846,20 @@ class AutomationWorkflow {
           cleanWebsite = `https://${cleanWebsite}`;
         }
         // Remove LinkedIn redirect if present
-        cleanWebsite = cleanWebsite.replace(/^https?:\/\/www\.linkedin\.com\/redirect\/\?url=/, "");
+        cleanWebsite = cleanWebsite.replace(
+          /^https?:\/\/www\.linkedin\.com\/redirect\/\?url=/,
+          ""
+        );
         cleanWebsite = decodeURIComponent(cleanWebsite.split("&")[0]);
         return cleanWebsite;
       }
 
       return null;
     } catch (error) {
-      console.error(`Error finding website via LinkedIn for ${companyName}:`, error.message);
+      console.error(
+        `Error finding website via LinkedIn for ${companyName}:`,
+        error.message
+      );
       if (browser) {
         await browser.close();
       }
@@ -791,7 +880,9 @@ class AutomationWorkflow {
       const mailOptions = {
         from: this.emailConfig.auth.user,
         to: "jaylimbasiya93@gmail.com",
-        subject: `Complete Automation Report - ${new Date().toLocaleDateString()} (${this.nodeJobs.length} jobs, ${this.allCompanyResults.length} companies)`,
+        subject: `Complete Automation Report - ${new Date().toLocaleDateString()} (${
+          this.nodeJobs.length
+        } jobs, ${this.allCompanyResults.length} companies)`,
         html: emailHtml,
         text: emailText,
         attachments: [
@@ -803,7 +894,9 @@ class AutomationWorkflow {
       };
 
       await transporter.sendMail(mailOptions);
-      console.log("✅ Email report sent successfully to jaylimbasiya93@gmail.com");
+      console.log(
+        "✅ Email report sent successfully to jaylimbasiya93@gmail.com"
+      );
     } catch (error) {
       console.error("❌ Error sending email:", error.message);
     }
@@ -827,25 +920,40 @@ class AutomationWorkflow {
 
       companiesHtml += `
         <div style="border: 1px solid #ddd; padding: 15px; margin: 10px 0; border-radius: 5px; background: #f9f9f9;">
-          <h3 style="margin: 0 0 10px 0; color: #0073b1;">${index + 1}. ${companyResult.company}</h3>
-          <p style="margin: 5px 0;"><strong>Website:</strong> <a href="${companyResult.website}" target="_blank">${companyResult.website}</a></p>
+          <h3 style="margin: 0 0 10px 0; color: #0073b1;">${index + 1}. ${
+        companyResult.company
+      }</h3>
+          <p style="margin: 5px 0;"><strong>Website:</strong> <a href="${
+            companyResult.website
+          }" target="_blank">${companyResult.website}</a></p>
           <p style="margin: 5px 0;"><strong>Jobs Found:</strong> ${jobsCount}</p>
           <p style="margin: 5px 0;"><strong>People Found:</strong> ${namesFound}</p>
           <p style="margin: 5px 0;"><strong>Emails Found:</strong> ${emailsFound}</p>
           
-          ${emailsFound > 0 ? `
+          ${
+            emailsFound > 0
+              ? `
             <div style="margin-top: 10px; padding: 10px; background: #e7f3ff; border-radius: 3px;">
               <strong>Emails:</strong>
               <ul style="margin: 5px 0; padding-left: 20px;">
-                ${companyResult.emailResults.emailArray.map(email => `<li>${email}</li>`).join("")}
+                ${companyResult.emailResults.emailArray
+                  .map((email) => `<li>${email}</li>`)
+                  .join("")}
               </ul>
             </div>
-          ` : ""}
+          `
+              : ""
+          }
           
           <div style="margin-top: 10px;">
             <strong>Job Listings:</strong>
             <ul style="margin: 5px 0; padding-left: 20px;">
-              ${companyResult.jobs.map(job => `<li><a href="${job.url}" target="_blank">${job.title}</a> - ${job.location}</li>`).join("")}
+              ${companyResult.jobs
+                .map(
+                  (job) =>
+                    `<li><a href="${job.url}" target="_blank">${job.title}</a> - ${job.location}</li>`
+                )
+                .join("")}
             </ul>
           </div>
         </div>
@@ -910,14 +1018,14 @@ class AutomationWorkflow {
       text += `   Jobs Found: ${companyResult.jobs.length}\n`;
       text += `   People Found: ${companyResult.linkedinNames.length}\n`;
       text += `   Emails Found: ${companyResult.emailResults.emailArray.length}\n`;
-      
+
       if (companyResult.emailResults.emailArray.length > 0) {
         text += `   Emails:\n`;
-        companyResult.emailResults.emailArray.forEach(email => {
+        companyResult.emailResults.emailArray.forEach((email) => {
           text += `     - ${email}\n`;
         });
       }
-      
+
       text += `\n`;
     });
 
@@ -1139,19 +1247,19 @@ class AutomationWorkflow {
       f_TPR: this.datePosted,
       sortBy: "DD",
     });
-    
+
     // Add workplace type filter (exclude remote jobs)
     if (this.excludeRemote && this.workplaceTypes.length > 0) {
       params.append("f_WT", this.workplaceTypes.join(","));
     }
-    
+
     return `${this.baseURL}/jobs/search/?${params.toString()}`;
   }
 
   async applyFilters(page) {
     try {
       await this.delay(3000);
-      
+
       // Apply workplace type filter if needed (exclude remote)
       if (this.excludeRemote) {
         await page.evaluate(() => {
@@ -1159,7 +1267,7 @@ class AutomationWorkflow {
           const workplaceButtons = document.querySelectorAll(
             'button[aria-label*="Workplace type"], button[aria-label*="Workplace Type"], button[data-control-name*="workplace_type"]'
           );
-          
+
           for (const button of workplaceButtons) {
             const text = button.textContent?.toLowerCase() || "";
             if (text.includes("workplace") || text.includes("remote")) {
@@ -1169,33 +1277,46 @@ class AutomationWorkflow {
           }
           return false;
         });
-        
+
         await this.delay(2000);
-        
+
         // Select On-site only (exclude Remote)
         await page.evaluate((workplaceTypes) => {
           // Look for checkboxes or options
-          const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+          const checkboxes = document.querySelectorAll(
+            'input[type="checkbox"]'
+          );
           const labels = document.querySelectorAll("label, li, span");
-          
+
           for (const checkbox of checkboxes) {
-            const label = checkbox.closest("label")?.textContent?.toLowerCase() || "";
-            const ariaLabel = checkbox.getAttribute("aria-label")?.toLowerCase() || "";
-            
+            const label =
+              checkbox.closest("label")?.textContent?.toLowerCase() || "";
+            const ariaLabel =
+              checkbox.getAttribute("aria-label")?.toLowerCase() || "";
+
             // Uncheck Remote
-            if ((label.includes("remote") || ariaLabel.includes("remote")) && checkbox.checked) {
+            if (
+              (label.includes("remote") || ariaLabel.includes("remote")) &&
+              checkbox.checked
+            ) {
               checkbox.click();
             }
-            
+
             // Check On-site
-            if ((label.includes("on-site") || label.includes("onsite") || ariaLabel.includes("on-site")) && !checkbox.checked && workplaceTypes.includes("1")) {
+            if (
+              (label.includes("on-site") ||
+                label.includes("onsite") ||
+                ariaLabel.includes("on-site")) &&
+              !checkbox.checked &&
+              workplaceTypes.includes("1")
+            ) {
               checkbox.click();
             }
           }
         }, this.workplaceTypes);
-        
+
         await this.delay(2000);
-        
+
         // Click show results or apply button
         await page.evaluate(() => {
           const applyButtons = document.querySelectorAll(
@@ -1205,11 +1326,13 @@ class AutomationWorkflow {
             applyButtons[0].click();
           }
         });
-        
+
         await this.delay(3000);
       }
-      
-      console.log("✅ Filters applied (Remote jobs excluded: " + this.excludeRemote + ")");
+
+      console.log(
+        "✅ Filters applied (Remote jobs excluded: " + this.excludeRemote + ")"
+      );
     } catch (error) {
       console.error("Error applying filters:", error.message);
     }
@@ -1371,7 +1494,9 @@ class AutomationWorkflow {
   isNodeJob(jobData) {
     if (!jobData) return false;
 
-    const searchText = `${jobData.title || ""} ${jobData.description || ""}`.toLowerCase();
+    const searchText = `${jobData.title || ""} ${
+      jobData.description || ""
+    }`.toLowerCase();
 
     const nodeKeywords = [
       "node.js",
@@ -1397,7 +1522,11 @@ class AutomationWorkflow {
     if (!jobData) return false;
 
     const workplaceType = (jobData.workplaceType || "").toLowerCase();
-    const location = (jobData.jobLocation || jobData.location || "").toLowerCase();
+    const location = (
+      jobData.jobLocation ||
+      jobData.location ||
+      ""
+    ).toLowerCase();
     const description = (jobData.description || "").toLowerCase();
     const title = (jobData.title || "").toLowerCase();
 
@@ -1422,7 +1551,11 @@ class AutomationWorkflow {
       "100% remote",
     ];
 
-    if (remoteKeywords.some((keyword) => description.includes(keyword) || title.includes(keyword))) {
+    if (
+      remoteKeywords.some(
+        (keyword) => description.includes(keyword) || title.includes(keyword)
+      )
+    ) {
       return true;
     }
 
