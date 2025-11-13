@@ -60,7 +60,16 @@ class LinkedInJobScraper {
           "--disable-dev-shm-usage",
           "--disable-accelerated-2d-canvas",
           "--disable-gpu",
+          "--disable-web-security",
+          "--disable-features=IsolateOrigins,site-per-process",
+          "--single-process", // Important for Azure
+          "--no-zygote", // Important for Azure
         ],
+        executablePath:
+          process.env.PUPPETEER_EXECUTABLE_PATH ||
+          (process.platform === "linux"
+            ? "/usr/bin/chromium-browser"
+            : undefined),
       });
 
       page = await browser.newPage();
