@@ -1080,10 +1080,11 @@ class LinkedInJobScraper {
 
       // Wait for navigation with better handling
       console.log("⏳ Waiting for login to complete...");
-      await this.delay(10000);
+      await this.delay(100000);
 
       // Check for login success
       const loginSuccess = await page.evaluate(() => {
+        console.log("Checking login success...");
         return (
           document.querySelector(
             ".global-nav, .feed-identity-module, [data-test-global-nav]"
