@@ -1107,7 +1107,7 @@ class LinkedInJobScraper {
         if (errorMessage) {
           console.log(`❌ Login error: ${errorMessage}`);
         } else {
-          console.log("❌ Login failed - unknown reason");
+          console.log("❌ Login failed - unknown reason", errorMessage);
           // Take screenshot of current state
           await page.screenshot({ path: "login-failed.png", fullPage: true });
           console.log("📸 Failed login state saved as 'login-failed.png'");
