@@ -1136,16 +1136,24 @@ class LinkedInJobScraper {
    */
   async setStealthMode(page) {
     // Set a realistic viewport
-    await page.setViewport({
-      width: 1280,
-      height: 720,
-      deviceScaleFactor: 1,
-    });
+    // await page.setViewport({
+    //   width: 1280,
+    //   height: 720,
+    //   deviceScaleFactor: 1,
+    // });
 
-    // Set a realistic user agent
+    // // Set a realistic user agent
+    // await page.setUserAgent(
+    //   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    // );
+
     await page.setUserAgent(
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+      "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
     );
+    await page.setViewport({ width: 1366, height: 768 });
+    await page.evaluateOnNewDocument(() => {
+      Object.defineProperty(navigator, "webdriver", { get: () => false });
+    });
 
     // Extra stealth evasions
     await page.evaluateOnNewDocument(() => {
