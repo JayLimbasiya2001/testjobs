@@ -9,13 +9,12 @@ class LinkedInJobScraper {
     this.delayBetweenJobs = 2000;
     this.delayBetweenLocations = 5000;
     this.maxJobsPerLocation = 500;
-    this.navigationTimeout = 90000; // Increased timeout
+    this.navigationTimeout = 90000;
 
     // Search parameters
     this.searchQuery =
       '"software engineer" OR "software developer" OR "backend engineer" OR "backend developer" OR "application developer" OR "application engineer" OR "node" OR "full stack"';
     this.locations = ["Bangalore", "Pune", "Mumbai", "Gurugram", "Ahmedabad"];
-    // this.locations = ["United States"];
     this.experienceLevels = ["2", "3"]; // Entry level, Associate, Mid-Senior
     this.datePosted = "r86400"; // Past 1 day
     this.workplaceTypes = ["1"]; // 1=On-site, 2=Remote, 3=Hybrid
@@ -30,6 +29,12 @@ class LinkedInJobScraper {
         user: "jaylimbasiya93@gmail.com",
         pass: "mjsg ikgq yokl bmew",
       },
+    };
+
+    // LinkedIn credentials - UPDATE THESE FOR YOUR AZURE SERVER
+    this.linkedinCredentials = {
+      email: "jaylimbasiya93@gmail.com", // UPDATE THIS
+      password: "your_linkedin_password", // UPDATE THIS
     };
   }
 
@@ -51,7 +56,7 @@ class LinkedInJobScraper {
 
       // Launch browser
       browser = await puppeteer.launch({
-        headless: false,
+        headless: true,
         args: [
           "--no-sandbox",
           "--disable-setuid-sandbox",
@@ -76,6 +81,7 @@ class LinkedInJobScraper {
 
       if (!loginSuccess) {
         console.log("❌ Login failed. Exiting...");
+        await browser.close();
         return;
       }
 
@@ -112,6 +118,8 @@ class LinkedInJobScraper {
       await this.sendNodeJsJobsEmail();
 
       await browser.close();
+
+      console.log("🎉 Scraping completed successfully!");
     } catch (error) {
       console.error("💥 Error in job scraping:", error);
       if (browser) {
@@ -958,17 +966,14 @@ class LinkedInJobScraper {
       const credentials = this.getLinkedInCredentials();
 
       if (!credentials.email || !credentials.password) {
-        console.log("⚠️  No LinkedIn credentials provided");
-        console.log("💡 Create a linkedin_config.json file with:");
+        console.log("❌ No LinkedIn credentials provided");
         console.log(
-          JSON.stringify(
-            { email: "your-email@example.com", password: "your-password" },
-            null,
-            2
-          )
+          "💡 Please update the linkedinCredentials in the constructor"
         );
         return false;
       }
+
+      console.log(`🔐 Attempting login with: ${credentials.email}`);
 
       await page.goto(`${this.baseURL}/login`, {
         waitUntil: "domcontentloaded",
@@ -978,9 +983,13 @@ class LinkedInJobScraper {
       await this.delay(3000);
 
       // Wait for login form
-      await page.waitForSelector("#username, [name='session_key']", {
-        timeout: 15000,
-      });
+      try {
+        await page.waitForSelector("#username, [name='session_key']", {
+          timeout: 15000,
+        });
+      } catch (e) {
+        console.log("⚠️ Login form not found, trying alternative selectors...");
+      }
 
       const usernameField =
         (await page.$("#username")) || (await page.$("[name='session_key']"));
@@ -1013,8 +1022,29 @@ class LinkedInJobScraper {
             console.log("✅ Successfully logged into LinkedIn");
             await this.delay(3000);
             return true;
+          } else {
+            console.log(
+              "❌ Login may have failed - checking for error messages..."
+            );
+
+            // Check for error messages
+            const errorMessage = await page.evaluate(() => {
+              const errorElement = document.querySelector(
+                ".error-for-username, .alert-error, .error"
+              );
+              return errorElement ? errorElement.textContent.trim() : null;
+            });
+
+            if (errorMessage) {
+              console.log(`❌ Login error: ${errorMessage}`);
+            }
+
+            return false;
           }
         }
+      } else {
+        console.log("❌ Login form fields not found");
+        return false;
       }
 
       return false;
@@ -1022,6 +1052,50 @@ class LinkedInJobScraper {
       console.error("❌ Login failed:", error.message);
       return false;
     }
+  }
+
+  /**
+   * Get LinkedIn credentials - SIMPLIFIED VERSION
+   */
+  getLinkedInCredentials() {
+    // Method 1: Use hardcoded credentials from constructor
+    if (this.linkedinCredentials.email && this.linkedinCredentials.password) {
+      console.log("✅ Using hardcoded LinkedIn credentials");
+      return this.linkedinCredentials;
+    }
+
+    // Method 2: Check environment variables
+    const envEmail = process.env.LINKEDIN_EMAIL;
+    const envPassword = process.env.LINKEDIN_PASSWORD;
+
+    if (envEmail && envPassword) {
+      console.log("✅ Using LinkedIn credentials from environment variables");
+      return {
+        email: envEmail,
+        password: envPassword,
+      };
+    }
+
+    // Method 3: Check config file
+    try {
+      if (fs.existsSync("./linkedin_config.json")) {
+        const config = JSON.parse(
+          fs.readFileSync("./linkedin_config.json", "utf8")
+        );
+        if (config.email && config.password) {
+          console.log("✅ Using LinkedIn credentials from config file");
+          return {
+            email: config.email,
+            password: config.password,
+          };
+        }
+      }
+    } catch (error) {
+      console.error("Error reading config file:", error.message);
+    }
+
+    console.log("❌ No LinkedIn credentials found in any source");
+    return { email: "", password: "" };
   }
 
   /**
@@ -1058,34 +1132,6 @@ class LinkedInJobScraper {
   }
 
   /**
-   * Get LinkedIn credentials
-   */
-  getLinkedInCredentials() {
-    if (process.env.LINKEDIN_EMAIL && process.env.LINKEDIN_PASSWORD) {
-      return {
-        email: process.env.LINKEDIN_EMAIL,
-        password: process.env.LINKEDIN_PASSWORD,
-      };
-    }
-
-    try {
-      if (fs.existsSync("./linkedin_config.json")) {
-        const config = JSON.parse(
-          fs.readFileSync("./linkedin_config.json", "utf8")
-        );
-        return {
-          email: config.email || "",
-          password: config.password || "",
-        };
-      }
-    } catch (error) {
-      console.error("Error reading config file:", error.message);
-    }
-
-    return { email: "", password: "" };
-  }
-
-  /**
    * Utility delay function
    */
   delay(ms) {
@@ -1099,42 +1145,25 @@ class LinkedInJobScraper {
     const timestamp = new Date().getTime();
 
     // Save all jobs
-    const allJobsFilename = `all_jobs_${timestamp}.json`;
-    fs.writeFileSync(
-      allJobsFilename,
-      JSON.stringify(
-        {
-          totalJobs: this.allJobs.length,
-          locations: this.locations,
-          searchQuery: this.searchQuery,
-          scrapedAt: new Date().toISOString(),
-          jobs: this.allJobs,
-        },
-        null,
-        2
-      )
-    );
-    console.log(`\n✅ All jobs saved to: ${allJobsFilename}`);
-
-    // Save Node.js jobs
-    const nodeJobsFilename = `nodejs_jobs_${timestamp}.json`;
-    fs.writeFileSync(
-      nodeJobsFilename,
-      JSON.stringify(
-        {
-          totalNodeJobs: this.nodeJobs.length,
-          locations: this.locations,
-          scrapedAt: new Date().toISOString(),
-          jobs: this.nodeJobs,
-        },
-        null,
-        2
-      )
-    );
-    console.log(`✅ Node.js jobs saved to: ${nodeJobsFilename}`);
-
-    // Save summary CSV for all jobs
     if (this.allJobs.length > 0) {
+      const allJobsFilename = `all_jobs_${timestamp}.json`;
+      fs.writeFileSync(
+        allJobsFilename,
+        JSON.stringify(
+          {
+            totalJobs: this.allJobs.length,
+            locations: this.locations,
+            searchQuery: this.searchQuery,
+            scrapedAt: new Date().toISOString(),
+            jobs: this.allJobs,
+          },
+          null,
+          2
+        )
+      );
+      console.log(`\n✅ All jobs saved to: ${allJobsFilename}`);
+
+      // Save summary CSV for all jobs
       const allCsvFilename = `all_jobs_${timestamp}.csv`;
       const csvHeader =
         "Title,Company,Location,Job Location,Posted,Applicants,Seniority,Employment Type,Job URL\n";
@@ -1155,10 +1184,29 @@ class LinkedInJobScraper {
 
       fs.writeFileSync(allCsvFilename, csvHeader + csvRows);
       console.log(`✅ All jobs CSV saved to: ${allCsvFilename}`);
+    } else {
+      console.log("❌ No jobs found to save");
     }
 
-    // Save CSV for Node.js jobs
+    // Save Node.js jobs
     if (this.nodeJobs.length > 0) {
+      const nodeJobsFilename = `nodejs_jobs_${timestamp}.json`;
+      fs.writeFileSync(
+        nodeJobsFilename,
+        JSON.stringify(
+          {
+            totalNodeJobs: this.nodeJobs.length,
+            locations: this.locations,
+            scrapedAt: new Date().toISOString(),
+            jobs: this.nodeJobs,
+          },
+          null,
+          2
+        )
+      );
+      console.log(`✅ Node.js jobs saved to: ${nodeJobsFilename}`);
+
+      // Save CSV for Node.js jobs
       const nodeCsvFilename = `nodejs_jobs_${timestamp}.csv`;
       const csvHeader =
         "Title,Company,Location,Job Location,Posted,Applicants,Seniority,Employment Type,Job URL\n";
@@ -1179,6 +1227,8 @@ class LinkedInJobScraper {
 
       fs.writeFileSync(nodeCsvFilename, csvHeader + csvRows);
       console.log(`✅ Node.js jobs CSV saved to: ${nodeCsvFilename}`);
+    } else {
+      console.log("❌ No Node.js jobs found to save");
     }
   }
 
@@ -1207,8 +1257,30 @@ class LinkedInJobScraper {
   }
 }
 
-// Run the scraper
+// Create config file if it doesn't exist
+function createConfigFileIfNeeded() {
+  const configPath = "./linkedin_config.json";
+  if (!fs.existsSync(configPath)) {
+    const defaultConfig = {
+      email: "your-email@example.com",
+      password: "your-linkedin-password",
+    };
+    fs.writeFileSync(configPath, JSON.stringify(defaultConfig, null, 2));
+    console.log("📁 Created linkedin_config.json template file");
+    console.log("💡 Please update it with your LinkedIn credentials");
+  }
+}
+
+// Main execution
 (async () => {
-  const scraper = new LinkedInJobScraper();
-  await scraper.scrapeJobs();
+  try {
+    // Create config file template if needed
+    createConfigFileIfNeeded();
+
+    // Run the scraper
+    const scraper = new LinkedInJobScraper();
+    await scraper.scrapeJobs();
+  } catch (error) {
+    console.error("💥 Fatal error:", error);
+  }
 })();
